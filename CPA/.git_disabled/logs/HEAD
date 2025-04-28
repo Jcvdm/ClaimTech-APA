@@ -1,0 +1,3 @@
+0000000000000000000000000000000000000000 30344a6b014cc96c05402e46e4d348a401ad2de0 Jcvdm <vandermerwe.jaco194@gmail.com> 1745235208 +0200	commit (initial): Initial commit - CPA application structure
+30344a6b014cc96c05402e46e4d348a401ad2de0 774f099b1741319ba96e6bcb99a7c76ec454cac4 Jcvdm <vandermerwe.jaco194@gmail.com> 1745340938 +0200	commit: chore: commit current state of CPA directory
+774f099b1741319ba96e6bcb99a7c76ec454cac4 4364476c48f84f642c3978ee6897e6221a079cd3 Jcvdm <vandermerwe.jaco194@gmail.com> 1745732079 +0200	commit: Update claim details and implement server-side prefetching
