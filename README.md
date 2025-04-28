@@ -1,10 +1,23 @@
-# ClaimTech
+# ClaimTech - Claims Processing Application
 
 ClaimTech is a modern claims management system built with Next.js, React, and Supabase. The application is designed to streamline the entire claims lifecycle for insurance companies, loss adjusters, and claims handlers.
 
-## Project Overview
+## Repository Structure
 
-The application provides a comprehensive set of features for managing claims, vehicles, appointments, documents, and reporting, with a focus on efficiency, transparency, and user experience.
+This repository is set up to only track the `CPA` directory, which contains the ClaimTech application code. All other directories and files in the workspace are ignored by Git.
+
+```
+ClaimTech-APA/
+└── CPA/                  # Claims Processing Application (tracked by Git)
+    ├── src/              # Source code
+    ├── public/           # Static assets
+    ├── package.json      # Dependencies and scripts
+    └── ...               # Configuration files
+```
+
+## Getting Started
+
+The main application code is in the `CPA` directory. Please refer to the [CPA/README.md](CPA/README.md) file for detailed information about the project structure, technology stack, and setup instructions.
 
 ## Key Features
 
@@ -21,15 +34,6 @@ The application provides a comprehensive set of features for managing claims, ve
 - **Backend**: tRPC, PostgreSQL (via Supabase), Supabase Auth
 - **Form Handling**: React Hook Form with Zod validation
 
-## Architecture
+## Development
 
-The application follows a modern React architecture with Next.js App Router, using a combination of server and client components for optimal performance. It implements a Data Access Layer (DAL) pattern for data fetching and caching.
-
-## Directory Structure
-
-- `CPA/src/app/` - Next.js App Router pages and layouts
-- `CPA/src/components/` - Reusable UI components
-- `CPA/src/features/` - Domain-specific feature implementations
-- `CPA/src/lib/` - Utility functions and API client code
-- `CPA/src/server/` - Server-side API implementation
-- `CPA/src/trpc/` - tRPC client and server configuration
+To start working on the project, navigate to the CPA directory and follow the setup instructions in the [CPA/README.md](CPA/README.md) file.
