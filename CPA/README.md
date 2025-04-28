@@ -1,25 +1,72 @@
-# Create T3 App
+# ClaimTech - Claims Processing Application
 
-This is a [T3 Stack](https://create.t3.gg/) project bootstrapped with `create-t3-app`.
+ClaimTech is a modern claims management system built with Next.js, React, and Supabase. The application is designed to streamline the entire claims lifecycle for insurance companies, loss adjusters, and claims handlers.
 
-## What's next? How do I make an app with this?
+## Project Structure
 
-We try to keep this project as simple as possible, so you can start with just the scaffolding we set up for you, and add additional things later when they become necessary.
+```
+CPA/
+├── src/                  # Source code
+│   ├── app/              # Next.js App Router pages and layouts
+│   ├── components/       # Reusable UI components
+│   ├── features/         # Domain-specific feature implementations
+│   ├── lib/              # Utility functions and API client code
+│   ├── server/           # Server-side API implementation
+│   ├── trpc/             # tRPC client and server configuration
+│   ├── styles/           # Global CSS and styling
+│   ├── utils/            # Utility functions
+│   ├── hooks/            # Custom React hooks
+│   ├── db/               # Database schema and migrations
+│   └── stores/           # Global state management
+├── public/               # Static assets
+├── package.json          # Dependencies and scripts
+├── tsconfig.json         # TypeScript configuration
+├── next.config.js        # Next.js configuration
+├── postcss.config.js     # PostCSS configuration
+├── biome.jsonc           # Biome configuration
+└── components.json       # Shadcn UI configuration
+```
 
-If you are not familiar with the different technologies used in this project, please refer to the respective docs. If you still are in the wind, please join our [Discord](https://t3.gg/discord) and ask for help.
+## Technology Stack
 
-- [Next.js](https://nextjs.org)
-- [NextAuth.js](https://next-auth.js.org)
-- [Prisma](https://prisma.io)
-- [Drizzle](https://orm.drizzle.team)
-- [Tailwind CSS](https://tailwindcss.com)
-- [tRPC](https://trpc.io)
+- **Frontend**: Next.js 14 with App Router, TypeScript, React 19, Tailwind CSS, Shadcn UI
+- **State Management**: TanStack Query (React Query)
+- **Backend**: tRPC, PostgreSQL (via Supabase), Supabase Auth
+- **Form Handling**: React Hook Form with Zod validation
 
-## Learn More
+## Key Features
 
-To learn more about the [T3 Stack](https://create.t3.gg/), take a look at the following resources:
+- **Claims Management**: Create, update, and track claims
+- **Vehicle Management**: Record vehicle details and link to claims
+- **Appointment Scheduling**: Schedule and manage appointments
+- **Document Management**: Upload and store documents
+- **Reporting and Analytics**: Generate reports and track KPIs
 
-- [Documentation](https://create.t3.gg/)
-- [Learn the T3 Stack](https://create.t3.gg/en/faq#what-learning-resources-are-currently-available) — Check out these awesome tutorials
+## Getting Started
 
-You can check out the [create-t3-app GitHub repository](https://github.com/t3-oss/create-t3-app) — your feedback and contributions are welcome!
+1. Install dependencies:
+   ```bash
+   npm install --legacy-peer-deps
+   ```
+
+2. Set up environment variables:
+   Create a `.env.local` file with the following:
+   ```
+   NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+   ```
+
+3. Run the development server:
+   ```bash
+   npm run dev
+   ```
+
+4. Open [http://localhost:5000](http://localhost:5000) in your browser.
+
+## Development Commands
+
+- **Start Development Server**: `npm run dev`
+- **Build**: `npm run build`
+- **Start Production Server**: `npm start`
+- **Type Check**: `npm run typecheck`
+- **Lint**: `npm run check`
