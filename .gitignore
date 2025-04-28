@@ -1,41 +1,35 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# Ignore everything
+*
 
-# dependencies
-/node_modules
-/.pnp
-.pnp.js
+# But not the CPA directory
+!CPA/
 
-# testing
-/coverage
+# Ignore node_modules inside CPA
+CPA/node_modules/
 
-# next.js
-/.next/
-/out/
-next-env.d.ts
+# Ignore .next build directory inside CPA
+CPA/.next/
 
-# production
-/build
+# Ignore environment files
+CPA/.env
+CPA/.env.local
+CPA/.env.development.local
+CPA/.env.test.local
+CPA/.env.production.local
 
-# misc
-.DS_Store
-*.pem
+# Ignore logs
+CPA/npm-debug.log*
+CPA/yarn-debug.log*
+CPA/yarn-error.log*
+CPA/.pnpm-debug.log*
 
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
+# Ignore build outputs
+CPA/out/
+CPA/build/
 
-# local env files
-.env
-.env*.local
+# Ignore TypeScript cache
+CPA/*.tsbuildinfo
 
-# vercel
-.vercel
-
-# typescript
-*.tsbuildinfo
-
-# IDE files
-.idea
-.vscode
+# Ignore IDE files
+CPA/.idea/
+CPA/.vscode/
