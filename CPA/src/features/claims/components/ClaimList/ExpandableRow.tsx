@@ -6,13 +6,20 @@ import { TableRow, TableCell } from '@/components/ui/table';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { api } from '@/trpc/react';
-import { type ClaimWithRelations } from '@/lib/api/domains/claims';
-import { usePrefetchClaim } from '@/lib/api/domains/claims/usePrefetchClaim';
+import {
+  type ClaimWithRelations,
+  type ClaimSummary,
+  QUERY_KEYS,
+  CACHE_TIMES
+} from '@/lib/api/domains/claims';
+import { claimsApi } from '@/lib/api/domains/claims';
+import { usePrefetchOnHover } from '@/lib/api/domains/claims/claimCache';
 import { SummaryContent } from './SummaryContent';
 import { Skeleton } from '@/components/ui/skeleton';
 import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
 import { flexRender, type Cell } from "@tanstack/react-table";
+import { useQueryClient } from '@tanstack/react-query';
 
 // Add debounce utility function
 function debounce<T extends (...args: any[]) => any>(
@@ -63,25 +70,121 @@ export function ExpandableRow({
   isExpanded,
   onToggle
 }: ExpandableRowProps) {
-  // Use the new prefetching hook
-  const { handleRowHover, handleOpenClaimHover } = usePrefetchClaim();
+  // Use the prefetch on hover hook (this returns no-op functions that won't cause errors)
+  const { handleRowHover, handleDetailsHover: handleOpenClaimHover } = usePrefetchOnHover();
 
-  // Fetch summary data when expanded
-  const { data: summary, isLoading, isError } = api.claim.getSummary.useQuery(
-    { id: claim.id },
-    {
-      enabled: isExpanded,
-      staleTime: 5 * 60 * 1000,
-      refetchOnMount: false,
+  // Get the query client directly using the useQueryClient hook
+  const queryClient = useQueryClient();
+
+  // Check if summary data is already in the cache using predefined query keys
+  let cachedSummary: ClaimSummary | undefined;
+
+  try {
+    // Use the predefined query keys from constants
+    const clientQueryKey = QUERY_KEYS.getSummaryKey(claim.id);
+    cachedSummary = queryClient.getQueryData(clientQueryKey);
+
+    if (cachedSummary) {
+      console.log(`[ExpandableRow] Found cached data for claim ${claim.id} with client query key`);
+    } else {
+      // If not found with client key, try the tRPC format
+      const trpcQueryKey = QUERY_KEYS.TRPC.SUMMARY(claim.id);
+      cachedSummary = queryClient.getQueryData(trpcQueryKey);
+
+      if (cachedSummary) {
+        console.log(`[ExpandableRow] Found cached data for claim ${claim.id} with tRPC query key`);
+      }
     }
-  );
+  } catch (error) {
+    console.error(`[ExpandableRow] Error checking cache for claim ${claim.id}:`, error);
+  }
+
+  // Log whether we're using cached data
+  React.useEffect(() => {
+    if (isExpanded) {
+      console.log(`[ExpandableRow] Claim ${claim.id} expanded, cached summary: ${!!cachedSummary}`);
+
+      if (cachedSummary) {
+        console.log(`[ExpandableRow] Using cached summary data for claim ${claim.id}`);
+      } else {
+        console.log(`[ExpandableRow] No cached summary found for claim ${claim.id}, will fetch from API`);
+
+        // Log available cache keys for debugging
+        const allQueries = queryClient.getQueryCache().getAll();
+        const claimQueries = allQueries.filter(q =>
+          JSON.stringify(q.queryKey).includes('claim') &&
+          JSON.stringify(q.queryKey).includes(claim.id)
+        );
+
+        if (claimQueries.length > 0) {
+          console.log(`[ExpandableRow] Found ${claimQueries.length} related queries for claim ${claim.id}:`,
+            claimQueries.map(q => ({ key: q.queryKey, dataExists: !!q.state.data }))
+          );
+        }
+      }
+    }
+  }, [isExpanded, claim.id, cachedSummary, queryClient]);
+
+
+
+  // Use state to manage data loading with server-side fetching approach
+  const [summary, setSummary] = React.useState<ClaimSummary | undefined>(cachedSummary);
+  const [isLoading, setIsLoading] = React.useState(!cachedSummary && isExpanded);
+  const [isError, setIsError] = React.useState(false);
+  const [error, setError] = React.useState<Error | null>(null);
+
+  // Fetch data when expanded
+  React.useEffect(() => {
+    // If not expanded, do nothing
+    if (!isExpanded) return;
+
+    // If we already have data (from cache or previous fetch), use it
+    if (summary) {
+      console.log(`[ExpandableRow] Using existing data for claim ${claim.id}`);
+      return;
+    }
+
+    // Otherwise, fetch the data using the direct fetch function
+    setIsLoading(true);
+    setIsError(false);
+    setError(null);
+
+    console.log(`[ExpandableRow] Fetching summary for claim ${claim.id} using direct fetch`);
+
+    // Use the fetchClaimSummary function from claimsApi
+    claimsApi.queries.fetchClaimSummary(claim.id)
+      .then(data => {
+        if (data) {
+          console.log(`[ExpandableRow] Direct fetch succeeded for claim ${claim.id}`);
+          setSummary(data);
+
+          // Also store in cache for future use
+          const clientQueryKey = QUERY_KEYS.getSummaryKey(claim.id);
+          queryClient.setQueryData(clientQueryKey, data);
+        } else {
+          console.warn(`[ExpandableRow] Direct fetch returned null for claim ${claim.id}`);
+          setIsError(true);
+        }
+        setIsLoading(false);
+      })
+      .catch(err => {
+        console.error(`[ExpandableRow] Direct fetch failed for claim ${claim.id}:`, err);
+        setIsError(true);
+        setError(err as Error);
+        setIsLoading(false);
+      });
+  }, [isExpanded, claim.id, summary, queryClient]);
+
+  // No need for fallback variables anymore since we're using a direct approach
 
   // Create stable callback functions that use the claim ID
   const handleThisRowHover = React.useCallback(() => {
+    // Just pass the claim ID to the hover handler
     handleRowHover(claim.id);
   }, [claim.id, handleRowHover]);
 
   const handleThisDetailsHover = React.useCallback(() => {
+    // Just pass the claim ID to the hover handler
     handleOpenClaimHover(claim.id);
   }, [claim.id, handleOpenClaimHover]);
 
@@ -108,16 +211,42 @@ export function ExpandableRow({
           if (!cell) return <TableCell key={`empty-cell-${index}`}></TableCell>;
 
           try {
+            // Check if cell has all required properties
+            if (!cell.column || !cell.column.columnDef) {
+              console.warn(`Cell ${index} missing column or columnDef:`, cell);
+              return <TableCell key={`incomplete-cell-${index}`}>{cell.getValue?.() || ''}</TableCell>;
+            }
+
+            // Check if getContext is a function
+            if (typeof cell.getContext !== 'function') {
+              console.warn(`Cell ${index} getContext is not a function:`, cell);
+              return (
+                <TableCell key={`no-context-cell-${index}`}>
+                  {cell.getValue?.() || ''}
+                </TableCell>
+              );
+            }
+
+            // Get context safely
+            let context;
+            try {
+              context = cell.getContext();
+            } catch (contextError) {
+              console.error(`Error getting context for cell ${index}:`, contextError);
+              return <TableCell key={`context-error-cell-${index}`}>{cell.getValue?.() || ''}</TableCell>;
+            }
+
+            // Render with full context if available
             return (
               <TableCell key={cell.id || `cell-${index}`}>
-                {cell.column?.columnDef?.cell
-                  ? flexRender(cell.column.columnDef.cell, cell.getContext())
-                  : null}
+                {cell.column.columnDef.cell
+                  ? flexRender(cell.column.columnDef.cell, context)
+                  : cell.getValue?.() || ''}
               </TableCell>
             );
           } catch (error) {
-            console.error("Error rendering cell:", error);
-            return <TableCell key={`error-cell-${cell?.id || index}`}>Error</TableCell>;
+            console.error(`Error rendering cell ${index}:`, error);
+            return <TableCell key={`error-cell-${index}`}>Error</TableCell>;
           }
         }), [cells])}
       </TableRow>
@@ -147,23 +276,56 @@ export function ExpandableRow({
           if (!cell) return <TableCell key={`empty-cell-${index}`}></TableCell>;
 
           try {
+            // Check if cell has all required properties
+            if (!cell.column || !cell.column.columnDef) {
+              console.warn(`Cell ${index} missing column or columnDef:`, cell);
+              return <TableCell key={`incomplete-cell-${index}`}>{cell.getValue?.() || ''}</TableCell>;
+            }
+
+            // Check if getContext is a function
+            if (typeof cell.getContext !== 'function') {
+              console.warn(`Cell ${index} getContext is not a function:`, cell);
+              return (
+                <TableCell key={`no-context-cell-${index}`}>
+                  {cell.getValue?.() || ''}
+                </TableCell>
+              );
+            }
+
+            // Get context safely
+            let context;
+            try {
+              context = cell.getContext();
+            } catch (contextError) {
+              console.error(`Error getting context for cell ${index}:`, contextError);
+              return <TableCell key={`context-error-cell-${index}`}>{cell.getValue?.() || ''}</TableCell>;
+            }
+
+            // Render with full context if available
             return (
               <TableCell key={cell.id || `cell-${index}`}>
-                {cell.column?.columnDef?.cell
-                  ? flexRender(cell.column.columnDef.cell, cell.getContext())
-                  : null}
+                {cell.column.columnDef.cell
+                  ? flexRender(cell.column.columnDef.cell, context)
+                  : cell.getValue?.() || ''}
               </TableCell>
             );
           } catch (error) {
-            console.error("Error rendering cell:", error);
-            return <TableCell key={`error-cell-${cell?.id || index}`}>Error</TableCell>;
+            console.error(`Error rendering cell ${index}:`, error);
+            return <TableCell key={`error-cell-${index}`}>Error</TableCell>;
           }
         }), [cells])}
       </TableRow>
       <TableRow className="bg-muted/30">
         <TableCell colSpan={columnsCount + 1} className="p-0">
           <div className="p-4 border-t">
-            {/* PRIORITIZE showing summary if available, even if isLoading is briefly true */}
+            {/* Show a message if we're using cached data */}
+            {cachedSummary && summary === cachedSummary && (
+              <div className="mb-2 text-xs text-blue-600 bg-blue-50 p-1 rounded">
+                Using cached data
+              </div>
+            )}
+
+            {/* PRIORITIZE showing summary if available, even if loading is briefly true */}
             {summary && Object.keys(summary).length > 0 ? (
               <div className="space-y-4">
                 <SummaryContent summary={summary} />
@@ -183,13 +345,23 @@ export function ExpandableRow({
               </div>
             ) : isLoading ? ( // Show skeleton ONLY if summary is NOT available AND isLoading is true
               <div className="space-y-2">
-                <Skeleton className="h-4 w-1/3" />
+                <div className="flex items-center">
+                  <Skeleton className="h-4 w-1/3" />
+                  <span className="ml-2 text-xs text-muted-foreground animate-pulse">
+                    Loading...
+                  </span>
+                </div>
                 <Skeleton className="h-4 w-1/2" />
                 <Skeleton className="h-4 w-2/3" />
               </div>
             ) : isError ? ( // Show error if not loading and no summary
               <div className="text-destructive p-2">
-                Error loading claim details
+                <p>Error loading claim details</p>
+                {error && (
+                  <p className="text-xs mt-1">
+                    {error.message || "Unknown error"}
+                  </p>
+                )}
               </div>
             ) : ( // Fallback if no summary, not loading, and no error
               <div className="text-muted-foreground p-2">
