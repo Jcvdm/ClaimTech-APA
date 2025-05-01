@@ -2,6 +2,7 @@
 
 import React from "react";
 import { usePathname } from "next/navigation";
+import Link from "next/link";
 import {
   Home,
   FileText,
@@ -109,10 +110,10 @@ export function AppSidebar() {
                 isActive={item.isActive}
                 tooltip={item.label} // Tooltip will show when collapsed
               >
-                <a href={item.href} className="flex items-center gap-2">
+                <Link href={item.href} prefetch={false} className="flex items-center gap-2">
                   {item.icon}
                   <span className={isCollapsed ? "sr-only" : ""}>{item.label}</span>
-                </a>
+                </Link>
               </SidebarMenuButton>
 
               {/* Add badge if applicable */}
