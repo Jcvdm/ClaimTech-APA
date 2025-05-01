@@ -6,18 +6,29 @@ import { Button } from '@/components/ui/button';
 import { Plus, X, AlertTriangle } from 'lucide-react';
 import { type ClaimDetails } from '@/lib/api/domains/claims/types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { type Appointment } from '@/lib/api/domains/appointments';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface AppointmentFormWrapperProps {
   claim: ClaimDetails | undefined | null;
   onAppointmentCreated: () => void;
+  appointment?: Appointment; // Optional appointment for editing mode
+  mode?: 'create' | 'edit'; // Form mode
+  isDialog?: boolean; // Whether to show in a dialog (for edit mode)
 }
 
 export default function AppointmentFormWrapper({
   claim,
-  onAppointmentCreated
+  onAppointmentCreated,
+  appointment,
+  mode = 'create',
+  isDialog = false
 }: AppointmentFormWrapperProps) {
+  // Only show the form by default if explicitly requested (not on initial tab load)
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
   // Validate claim data when component mounts or claim changes
   useEffect(() => {
@@ -32,6 +43,24 @@ export default function AppointmentFormWrapper({
 
   const handleSuccess = () => {
     setShowForm(false);
+
+    // Invalidate the appointments query to trigger a refetch
+    if (claim?.id) {
+      // Invalidate both client-side and tRPC-compatible query keys
+      const clientQueryKey = ['appointment', 'getByClaim', { claim_id: claim.id }];
+      const trpcQueryKey = ['appointment.getByClaim', { input: { claim_id: claim.id }, type: 'query' }];
+
+      console.log('[AppointmentForm] Invalidating queries:', clientQueryKey, trpcQueryKey);
+
+      // Invalidate the queries
+      queryClient.invalidateQueries({ queryKey: clientQueryKey });
+      queryClient.invalidateQueries({ queryKey: trpcQueryKey });
+
+      // Also invalidate the claim details to update any appointment-related data there
+      queryClient.invalidateQueries({ queryKey: ['claim.getDetails'] });
+    }
+
+    // Call the callback
     onAppointmentCreated();
   };
 
@@ -44,6 +73,43 @@ export default function AppointmentFormWrapper({
     return !!claim && !!claim.id;
   };
 
+  // If this is a dialog for editing, render the dialog
+  if (isDialog) {
+    return (
+      <>
+        {mode === 'edit' && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowForm(true)}
+            className="ml-auto"
+          >
+            <X className="h-4 w-4 mr-2" />
+            Edit
+          </Button>
+        )}
+
+        <Dialog open={showForm} onOpenChange={setShowForm}>
+          <DialogContent className="max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>Edit Appointment</DialogTitle>
+            </DialogHeader>
+            {isClaimValid() && appointment && (
+              <AppointmentForm
+                claim={claim as ClaimDetails}
+                appointment={appointment}
+                mode="edit"
+                onSuccess={handleSuccess}
+                onCancel={handleCancel}
+              />
+            )}
+          </DialogContent>
+        </Dialog>
+      </>
+    );
+  }
+
+  // Otherwise, render the inline form
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -79,6 +145,8 @@ export default function AppointmentFormWrapper({
       {showForm && isClaimValid() && (
         <AppointmentForm
           claim={claim as ClaimDetails} // Safe to cast here because we've checked validity
+          appointment={appointment}
+          mode={mode}
           onSuccess={handleSuccess}
           onCancel={handleCancel}
         />

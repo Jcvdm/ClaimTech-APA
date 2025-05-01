@@ -94,6 +94,7 @@ export interface ClaimDetails extends ClaimSummary {
   insured_contact: string | null;
   appointments: Appointment[];
   latest_appointment?: Appointment | null;
+  inspection_datetime?: string | null; // Date and time when inspection was performed
 }
 
 // Define type of loss enum
@@ -119,7 +120,7 @@ export type ClaimCreateInputWithOptionalFields = ClaimCreateInput & {
 export enum ClaimStatus {
   NEW = 'New',
   APPOINTED = 'Appointed',
-  INSPECTION_DONE = 'Inspection Done',
+  IN_PROGRESS = 'In Progress',
   REPORT_SENT = 'Report Sent',
   AUTHORIZED = 'Authorized',
   FRC_REQUESTED = 'FRC Requested',

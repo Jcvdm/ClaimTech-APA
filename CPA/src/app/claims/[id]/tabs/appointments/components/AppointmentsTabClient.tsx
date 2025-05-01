@@ -1,41 +1,64 @@
 "use client";
 
-import { useState } from 'react';
-import { type Appointment } from "@/lib/api/domains/appointments";
+import { useState, useEffect } from 'react';
+import { type Appointment, useAppointmentsByClaim } from "@/lib/api/domains/appointments";
 import { type ClaimDetails } from "@/lib/api/domains/claims/types";
 import { formatDate, formatTime } from "@/lib/utils";
 import { CalendarIcon, MapPinIcon, ClockIcon, UserIcon, PhoneIcon, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import AppointmentFormWrapper from "./AppointmentFormWrapper.client";
+import AppointmentEditButton from "./AppointmentEditButton";
+import AppointmentActions from "./AppointmentActions";
+import { useQueryClient } from '@tanstack/react-query';
 
 interface AppointmentsTabClientProps {
   appointmentsData?: Appointment[] | null;
   claim?: ClaimDetails | null;
 }
 
-export default function AppointmentsTabClient({ 
-  appointmentsData, 
-  claim 
+export default function AppointmentsTabClient({
+  appointmentsData,
+  claim
 }: AppointmentsTabClientProps) {
-  // Local state for appointments (could be updated after creating a new appointment)
-  const [appointments, setAppointments] = useState<Appointment[] | null | undefined>(appointmentsData);
-  
+  const queryClient = useQueryClient();
+
   // Check if we have valid data
   const hasValidClaimData = !!claim && !!claim.id;
+
+  // Use the hook to fetch appointments data
+  const { data: fetchedAppointments, refetch } = useAppointmentsByClaim(
+    hasValidClaimData ? claim.id : null
+  );
+
+  // Use fetched data if available, otherwise use the server-provided data
+  const appointments = fetchedAppointments || appointmentsData;
+
+  // Check if we have appointments
   const hasAppointments = Array.isArray(appointments) && appointments.length > 0;
 
-  // Handle appointment creation - this function is now defined in the client component
-  const handleAppointmentCreated = () => {
-    // In a real implementation, this would trigger a refetch or update of the appointments data
-    console.log("Appointment created, would refetch data");
-    
-    // For now, we're just logging. In a real app, you would fetch updated data here
-    // For example:
-    // fetchAppointments(claim?.id).then(newAppointments => {
-    //   setAppointments(newAppointments);
-    // });
+  // Deduplicate appointments by ID to prevent duplicate cards
+  const uniqueAppointments = hasAppointments
+    ? Array.from(new Map(appointments.map(a => [a.id, a])).values())
+    : [];
+
+  // Handle appointment creation/update
+  const handleAppointmentCreated = async () => {
+    console.log("Appointment created/updated, refetching data");
+
+    if (hasValidClaimData) {
+      // Invalidate the appointments query
+      const clientQueryKey = ['appointment', 'getByClaim', { claim_id: claim.id }];
+      const trpcQueryKey = ['appointment.getByClaim', { input: { claim_id: claim.id }, type: 'query' }];
+
+      // Invalidate the queries
+      queryClient.invalidateQueries({ queryKey: clientQueryKey });
+      queryClient.invalidateQueries({ queryKey: trpcQueryKey });
+
+      // Refetch the data
+      await refetch();
+    }
   };
 
   // If there's an error with the claim data, show an error message
@@ -55,10 +78,10 @@ export default function AppointmentsTabClient({
 
   return (
     <div className="space-y-6">
-      {/* Appointment Form Wrapper - Now we can safely pass the event handler */}
-      <AppointmentFormWrapper 
-        claim={claim} 
-        onAppointmentCreated={handleAppointmentCreated} 
+      {/* Appointment Form Wrapper */}
+      <AppointmentFormWrapper
+        claim={claim}
+        onAppointmentCreated={handleAppointmentCreated}
       />
 
       {/* Appointments List */}
@@ -70,9 +93,9 @@ export default function AppointmentsTabClient({
       ) : (
         <div className="space-y-6">
           <h2 className="text-xl font-semibold">Appointments</h2>
-          
+
           <div className="space-y-4">
-            {appointments
+            {uniqueAppointments
               .sort((a, b) => {
                 // Safely handle null appointment_datetime
                 const dateA = a.appointment_datetime ? new Date(a.appointment_datetime).getTime() : 0;
@@ -80,7 +103,12 @@ export default function AppointmentsTabClient({
                 return dateB - dateA;
               })
               .map((appointment) => (
-                <AppointmentCard key={appointment.id} appointment={appointment} />
+                <AppointmentCard
+                  key={appointment.id}
+                  appointment={appointment}
+                  claim={claim}
+                  onAppointmentUpdated={handleAppointmentCreated}
+                />
               ))
             }
           </div>
@@ -90,7 +118,11 @@ export default function AppointmentsTabClient({
   );
 }
 
-function AppointmentCard({ appointment }: { appointment: Appointment }) {
+function AppointmentCard({ appointment, claim, onAppointmentUpdated }: {
+  appointment: Appointment;
+  claim: ClaimDetails;
+  onAppointmentUpdated: () => void;
+}) {
   // Validate appointment object
   if (!appointment || typeof appointment !== 'object') {
     console.error('Invalid appointment object:', appointment);
@@ -110,7 +142,7 @@ function AppointmentCard({ appointment }: { appointment: Appointment }) {
   // Function to get status badge color
   const getStatusColor = (status: string | null) => {
     if (!status) return 'bg-gray-100 text-gray-800';
-    
+
     switch (status.toLowerCase()) {
       case 'scheduled':
         return 'bg-blue-100 text-blue-800';
@@ -155,9 +187,19 @@ function AppointmentCard({ appointment }: { appointment: Appointment }) {
           <CardTitle className="text-lg">
             {appointment.location_type || 'Unknown'} Appointment
           </CardTitle>
-          <Badge className={getStatusColor(appointment.appointment_status)}>
-            {appointment.appointment_status || 'Unknown'}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge className={getStatusColor(appointment.appointment_status)}>
+              {appointment.appointment_status || 'Unknown'}
+            </Badge>
+            {/* Only show edit button for non-cancelled appointments */}
+            {appointment.appointment_status !== 'cancelled' && (
+              <AppointmentEditButton
+                appointment={appointment}
+                claim={claim}
+                onAppointmentUpdated={onAppointmentUpdated}
+              />
+            )}
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -213,6 +255,18 @@ function AppointmentCard({ appointment }: { appointment: Appointment }) {
           </div>
         )}
       </CardContent>
+
+      {/* Only show actions for non-cancelled and non-completed appointments */}
+      {appointment.appointment_status !== 'cancelled' &&
+       appointment.appointment_status !== 'completed' && (
+        <CardFooter className="pt-0 px-6">
+          <AppointmentActions
+            appointment={appointment}
+            claim={claim}
+            onAppointmentUpdated={onAppointmentUpdated}
+          />
+        </CardFooter>
+      )}
     </Card>
   );
 }

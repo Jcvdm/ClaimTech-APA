@@ -30,18 +30,130 @@ function isValidUUID(id: string): boolean {
 
 /**
  * Hook for fetching claims with filtering
+ * @param params The filter parameters
+ * @param options Optional query options (initialData, staleTime, etc.)
  */
-export function useClaimsList(params: ClaimListParams) {
-  const query = claimQueries.list(params);
-  return useQueryState(() => query);
+export function useClaimsList(
+  params: ClaimListParams,
+  options?: {
+    initialData?: any;
+    staleTime?: number;
+    gcTime?: number;
+    enabled?: boolean;
+  }
+) {
+  // Use a try-catch block to handle any errors in the query creation
+  try {
+    const query = claimQueries.list(params, options);
+
+    // Wrap the useQueryState call in a try-catch to handle any hook errors
+    try {
+      return useQueryState(() => query);
+    } catch (error) {
+      console.error('[useClaimsList] Error in useQueryState:', error);
+
+      // Return a fallback state object that matches the expected shape
+      return {
+        data: undefined,
+        isLoading: false,
+        isError: true,
+        error: error instanceof Error ? error : new Error(String(error)),
+        status: 'error',
+        refetch: async () => {
+          console.warn('[useClaimsList] Refetch called on error state');
+          return { data: undefined, error: new Error('Cannot refetch from error state') };
+        }
+      };
+    }
+  } catch (error) {
+    console.error('[useClaimsList] Error creating query:', error);
+
+    // Return a fallback state object
+    return {
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: error instanceof Error ? error : new Error(String(error)),
+      status: 'error',
+      refetch: async () => {
+        console.warn('[useClaimsList] Refetch called on error state');
+        return { data: undefined, error: new Error('Cannot refetch from error state') };
+      }
+    };
+  }
 }
 
 /**
  * Hook for fetching sidebar badge counts
  */
 export function useClaimCounts() {
-  const query = claimQueries.getCounts();
-  return useQueryState(() => query);
+  try {
+    const query = claimQueries.getCounts();
+
+    try {
+      return useQueryState(() => query);
+    } catch (error) {
+      console.error('[useClaimCounts] Error in useQueryState:', error);
+
+      // Return a fallback state object with default counts
+      return {
+        data: {
+          active: 0,
+          additionals: 0,
+          frc: 0,
+          finalized: 0,
+          history: 0
+        },
+        isLoading: false,
+        isError: true,
+        error: error instanceof Error ? error : new Error(String(error)),
+        status: 'error',
+        refetch: async () => {
+          console.warn('[useClaimCounts] Refetch called on error state');
+          return {
+            data: {
+              active: 0,
+              additionals: 0,
+              frc: 0,
+              finalized: 0,
+              history: 0
+            },
+            error: new Error('Cannot refetch from error state')
+          };
+        }
+      };
+    }
+  } catch (error) {
+    console.error('[useClaimCounts] Error creating query:', error);
+
+    // Return a fallback state object with default counts
+    return {
+      data: {
+        active: 0,
+        additionals: 0,
+        frc: 0,
+        finalized: 0,
+        history: 0
+      },
+      isLoading: false,
+      isError: true,
+      error: error instanceof Error ? error : new Error(String(error)),
+      status: 'error',
+      refetch: async () => {
+        console.warn('[useClaimCounts] Refetch called on error state');
+        return {
+          data: {
+            active: 0,
+            additionals: 0,
+            frc: 0,
+            finalized: 0,
+            history: 0
+          },
+          error: new Error('Cannot refetch from error state')
+        };
+      }
+    };
+  }
 }
 
 /**
@@ -49,8 +161,56 @@ export function useClaimCounts() {
  * @param id The claim ID (can be undefined/null during initial render)
  */
 export function useClaim(id: string | undefined | null) {
-  const query = claimQueries.getById(id);
-  return useQueryState(() => query);
+  try {
+    // Validate the ID if provided
+    if (id && !isValidUUID(id)) {
+      console.warn(`[useClaim] Invalid UUID format for claim ID: ${id}`);
+      return {
+        data: undefined,
+        isLoading: false,
+        isError: true,
+        error: new Error(`Invalid UUID format: ${id}`),
+        status: 'error',
+        refetch: async () => ({ data: undefined, error: new Error('Invalid UUID') })
+      };
+    }
+
+    const query = claimQueries.getById(id);
+
+    try {
+      return useQueryState(() => query);
+    } catch (error) {
+      console.error('[useClaim] Error in useQueryState:', error);
+
+      // Return a fallback state object
+      return {
+        data: undefined,
+        isLoading: false,
+        isError: true,
+        error: error instanceof Error ? error : new Error(String(error)),
+        status: 'error',
+        refetch: async () => {
+          console.warn('[useClaim] Refetch called on error state');
+          return { data: undefined, error: new Error('Cannot refetch from error state') };
+        }
+      };
+    }
+  } catch (error) {
+    console.error('[useClaim] Error creating query:', error);
+
+    // Return a fallback state object
+    return {
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: error instanceof Error ? error : new Error(String(error)),
+      status: 'error',
+      refetch: async () => {
+        console.warn('[useClaim] Refetch called on error state');
+        return { data: undefined, error: new Error('Cannot refetch from error state') };
+      }
+    };
+  }
 }
 
 /**
@@ -248,34 +408,60 @@ export function useInfiniteClaimsList(params: Omit<ClaimListParams, 'page'>) {
  * @deprecated Use useClaimSummary or useClaimFullDetails instead
  */
 export function useClaimDetails(claimId: string | undefined | null) {
-  // First query to get the claim
-  const claimQuery = useClaim(claimId);
+  try {
+    // First query to get the claim
+    const claimQuery = useClaim(claimId);
 
-  // Use parallel queries for related data
-  const queries = useParallelQueries({
-    claim: claimQuery,
-    // These would be implemented in their respective domains
-    // client: useClient(claimQuery.data?.client_id),
-    // vehicle: useVehicle(claimQuery.data?.vehicle_id),
-  });
+    // Check if the claim query is our fallback error object
+    if (claimQuery.isError && typeof claimQuery.status === 'string') {
+      // Return a compatible result object
+      return {
+        data: undefined,
+        isLoading: false,
+        isError: true,
+        error: claimQuery.error,
+        status: 'error' as any // Cast to any to avoid type issues
+      };
+    }
 
-  // Combine the data
-  const data = claimQuery.data ? {
-    ...claimQuery.data,
-    // These would be populated with actual data when the domains are implemented
-    client: null,
-    vehicle: null
-  } : undefined;
+    // Use parallel queries for related data
+    const queries = useParallelQueries({
+      claim: claimQuery as any, // Cast to any to avoid type issues
+      // These would be implemented in their respective domains
+      // client: useClient(claimQuery.data?.client_id),
+      // vehicle: useVehicle(claimQuery.data?.vehicle_id),
+    });
 
-  return {
-    data,
-    isLoading: queries.isLoading,
-    isError: queries.isError,
-    error: claimQuery.error ? {
-      ...claimQuery.error,
-      name: claimQuery.error.name || 'Error' // Ensure name property exists
-    } : undefined
-  };
+    // Combine the data
+    const data = claimQuery.data ? {
+      ...claimQuery.data,
+      // These would be populated with actual data when the domains are implemented
+      client: null,
+      vehicle: null
+    } : undefined;
+
+    return {
+      data,
+      isLoading: queries.isLoading,
+      isError: queries.isError,
+      error: claimQuery.error ? {
+        ...claimQuery.error,
+        name: claimQuery.error.name || 'Error' // Ensure name property exists
+      } : undefined,
+      status: claimQuery.isLoading ? 'loading' : claimQuery.isError ? 'error' : 'success'
+    };
+  } catch (error) {
+    console.error('[useClaimDetails] Error:', error);
+
+    // Return a fallback state object
+    return {
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: error instanceof Error ? error : new Error(String(error)),
+      status: 'error' as any // Cast to any to avoid type issues
+    };
+  }
 }
 
 /**
@@ -380,10 +566,63 @@ export function useClaimSummary(
 export function useClaimPrefetching() {
   console.warn("[DEPRECATED] useClaimPrefetching is deprecated. Server-side prefetching is now used instead.");
   return {
-    prefetchSummary: (claimId: string, priority?: boolean) => Promise.resolve(),
-    prefetchDetails: (claimId: string, priority?: boolean) => Promise.resolve(),
-    prefetchMultipleSummaries: (claimIds: string[], priorityCount?: number) => Promise.resolve()
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    prefetchSummary: (_claimId: string, _priority?: boolean) => Promise.resolve(),
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    prefetchDetails: (_claimId: string, _priority?: boolean) => Promise.resolve(),
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    prefetchMultipleSummaries: (_claimIds: string[], _priorityCount?: number) => Promise.resolve()
   };
+}
+
+/**
+ * Hook for recording an inspection for a claim
+ * @deprecated Use useRecordInspection from the inspections domain instead
+ */
+export function useRecordInspection() {
+  console.warn("[DEPRECATED] useRecordInspection from claims domain is deprecated. Use useRecordInspection from inspections domain instead.");
+
+  const queryClient = useQueryClient();
+
+  return claimMutations.recordInspection({
+    onSuccess: (updatedClaim) => {
+      // Update the cache for the specific claim
+      queryClient.setQueryData(
+        getQueryKey(apiClient.raw.claim.getById, { id: updatedClaim.id }),
+        updatedClaim
+      );
+
+      // Also update the details and summary caches
+      queryClient.setQueryData(
+        getQueryKey(apiClient.raw.claim.getDetails, { id: updatedClaim.id }),
+        (oldData: any) => {
+          if (!oldData) return undefined;
+
+          // Create a safe update that handles potential type mismatches
+          const safeUpdate = {
+            ...oldData,
+            status: ClaimStatus.IN_PROGRESS
+          };
+
+          // Only add inspection_datetime if it exists in updatedClaim
+          if ('inspection_datetime' in updatedClaim) {
+            (safeUpdate as any).inspection_datetime = updatedClaim.inspection_datetime;
+          }
+
+          return safeUpdate;
+        }
+      );
+
+      queryClient.setQueryData(
+        getQueryKey(apiClient.raw.claim.getSummary, { id: updatedClaim.id }),
+        (oldData: any) => oldData ? { ...oldData, status: ClaimStatus.IN_PROGRESS } : undefined
+      );
+
+      // Invalidate lists that might contain this claim
+      queryClient.invalidateQueries({ queryKey: getQueryKey(apiClient.raw.claim.list) });
+      queryClient.invalidateQueries({ queryKey: getQueryKey(apiClient.raw.claim.getCounts) });
+    }
+  });
 }
 
 /**

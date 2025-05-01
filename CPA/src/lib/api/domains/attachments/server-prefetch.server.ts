@@ -1,24 +1,7 @@
 import "server-only";
-import { createTRPCContext } from "@/server/api/trpc";
-import { appRouter } from "@/server/api/root";
 import { cache } from "react";
+import { createServerCaller } from "@/lib/api/utils/createServerCaller";
 import { type AttachmentList } from "./types";
-
-/**
- * Create a server-side tRPC caller
- * This is different from the RSC api import from @/trpc/server.server
- */
-const createCaller = async () => {
-  // Create headers for the server request
-  const heads = new Headers();
-  heads.set("x-trpc-source", "server");
-
-  const ctx = await createTRPCContext({
-    headers: heads,
-  });
-
-  return appRouter.createCaller(ctx);
-};
 
 /**
  * Server-side prefetch for attachments related to a claim
@@ -29,7 +12,7 @@ export const prefetchAttachmentsServer = cache(async (claimId: string) => {
     console.log(`[Server Prefetch] Prefetching attachments for claim ${claimId}`);
 
     // Create a tRPC caller for server-side
-    const caller = await createCaller();
+    const caller = await createServerCaller();
 
     const attachments = await caller.attachment.getByClaim({ claim_id: claimId })
       .catch((error: Error) => {

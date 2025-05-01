@@ -1,24 +1,7 @@
 import "server-only";
-import { createTRPCContext } from "@/server/api/trpc";
-import { appRouter } from "@/server/api/root";
 import { cache } from "react";
+import { createServerCaller } from "@/lib/api/utils/createServerCaller";
 import { type Province, type LossAdjuster } from "./types";
-
-/**
- * Create a server-side tRPC caller
- * This is different from the RSC api import from @/trpc/server.server
- */
-const createCaller = async () => {
-  // Create headers for the server request
-  const heads = new Headers();
-  heads.set("x-trpc-source", "server");
-
-  const ctx = await createTRPCContext({
-    headers: heads,
-  });
-
-  return appRouter.createCaller(ctx);
-};
 
 /**
  * Server-side prefetch for provinces
@@ -29,7 +12,7 @@ export const prefetchProvincesServer = cache(async () => {
     console.log(`[Server Prefetch] Prefetching provinces`);
 
     // Create a tRPC caller for server-side
-    const caller = await createCaller();
+    const caller = await createServerCaller();
 
     const provinces = await caller.lookup.getProvinces()
       .catch((error: Error) => {
@@ -60,7 +43,7 @@ export const prefetchLossAdjustersServer = cache(async () => {
     console.log(`[Server Prefetch] Prefetching loss adjusters`);
 
     // Create a tRPC caller for server-side
-    const caller = await createCaller();
+    const caller = await createServerCaller();
 
     const lossAdjusters = await caller.lookup.getLossAdjusters()
       .catch((error: Error) => {

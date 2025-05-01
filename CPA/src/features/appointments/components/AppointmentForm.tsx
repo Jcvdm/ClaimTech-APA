@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -10,11 +10,16 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Calendar } from '@/components/ui/calendar';
-import { format } from 'date-fns';
+import { format, parse } from 'date-fns';
 import { CalendarIcon, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { useCreateAppointment } from '@/lib/api/domains/appointments';
+import {
+  useCreateAppointment,
+  useUpdateAppointment,
+  type Appointment,
+  LocationTypeOptions
+} from '@/lib/api/domains/appointments';
 import {
   Form,
   FormControl,
@@ -45,14 +50,15 @@ const appointmentFormSchema = z.object({
   appointment_time: z.string({
     required_error: "Please select a time",
   }).regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, "Please use HH:MM format"),
-  appointment_duration_minutes: z.coerce.number().min(15, "Minimum duration is 15 minutes").max(240, "Maximum duration is 4 hours"),
-  location_type: z.string({
+  // Remove appointment_duration_minutes from UI as per requirements
+  location_type: z.enum(["client", "tow yard", "workshop"], {
     required_error: "Please select a location type",
   }),
   location_address: z.string().min(5, "Please enter a valid address"),
   appointment_contact_name: z.string().min(2, "Please enter a contact name"),
   appointment_contact_phone: z.string().min(10, "Please enter a valid phone number"),
   special_instructions: z.string().optional(),
+  appointment_status: z.string().default("pending"),
 });
 
 // Infer the type from the schema
@@ -60,11 +66,13 @@ type AppointmentFormValues = z.infer<typeof appointmentFormSchema>;
 
 interface AppointmentFormProps {
   claim: ClaimDetails;
+  appointment?: Appointment; // Optional appointment for editing mode
+  mode?: 'create' | 'edit'; // Form mode
   onSuccess: () => void;
   onCancel: () => void;
 }
 
-export function AppointmentForm({ claim, onSuccess, onCancel }: AppointmentFormProps) {
+export function AppointmentForm({ claim, appointment, mode = 'create', onSuccess, onCancel }: AppointmentFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -75,16 +83,37 @@ export function AppointmentForm({ claim, onSuccess, onCancel }: AppointmentFormP
     // We'll continue with empty values and show an error message
   }
 
+  // Initialize mutations
+  const createAppointment = useCreateAppointment();
+  const updateAppointment = useUpdateAppointment();
+
+  // Parse appointment datetime and time if in edit mode
+  const getInitialDateTime = (): { date: Date, time: string } => {
+    if (mode === 'edit' && appointment?.appointment_datetime) {
+      const dateObj = new Date(appointment.appointment_datetime);
+      return {
+        date: dateObj,
+        time: format(dateObj, 'HH:mm')
+      };
+    }
+    return {
+      date: new Date(),
+      time: '09:00'
+    };
+  };
+
+  const { date: initialDate, time: initialTime } = getInitialDateTime();
+
   // Set default values using claim data with proper null checking
   const defaultValues: Partial<AppointmentFormValues> = {
-    appointment_datetime: new Date(),
-    appointment_time: '09:00',
-    appointment_duration_minutes: 60,
-    location_type: 'client_address',
-    location_address: '',
-    appointment_contact_name: claim?.insured_name || '',
-    appointment_contact_phone: claim?.insured_contact || '',
-    special_instructions: '',
+    appointment_datetime: initialDate,
+    appointment_time: initialTime,
+    location_type: mode === 'edit' ? appointment?.location_type as "client" | "tow yard" | "workshop" : "client",
+    location_address: mode === 'edit' ? appointment?.location_address || '' : '',
+    appointment_contact_name: mode === 'edit' ? appointment?.appointment_contact_name || '' : claim?.insured_name || '',
+    appointment_contact_phone: mode === 'edit' ? appointment?.appointment_contact_phone || '' : claim?.insured_contact || '',
+    special_instructions: mode === 'edit' ? appointment?.special_instructions || '' : '',
+    appointment_status: mode === 'edit' ? appointment?.appointment_status || 'pending' : 'pending',
   };
 
   // Initialize the form
@@ -93,21 +122,23 @@ export function AppointmentForm({ claim, onSuccess, onCancel }: AppointmentFormP
     defaultValues,
   });
 
-  // Initialize the appointment creation mutation
-  const createAppointment = useCreateAppointment();
+  // Reset form when appointment changes (for edit mode)
+  useEffect(() => {
+    if (mode === 'edit' && appointment) {
+      const { date: initialDate, time: initialTime } = getInitialDateTime();
 
-  // Set up mutation handlers
-  createAppointment.onSuccess = () => {
-    toast.success('Appointment scheduled successfully');
-    onSuccess();
-    setIsSubmitting(false);
-  };
-
-  createAppointment.onError = (error) => {
-    console.error('Error scheduling appointment:', error);
-    toast.error(`Failed to schedule appointment: ${error.message}`);
-    setIsSubmitting(false);
-  };
+      form.reset({
+        appointment_datetime: initialDate,
+        appointment_time: initialTime,
+        location_type: appointment.location_type as "client" | "tow yard" | "workshop",
+        location_address: appointment.location_address || '',
+        appointment_contact_name: appointment.appointment_contact_name || '',
+        appointment_contact_phone: appointment.appointment_contact_phone || '',
+        special_instructions: appointment.special_instructions || '',
+        appointment_status: appointment.appointment_status || 'pending',
+      });
+    }
+  }, [appointment, form, mode]);
 
   // Handle form submission
   const onSubmit = async (data: AppointmentFormValues) => {
@@ -125,24 +156,75 @@ export function AppointmentForm({ claim, onSuccess, onCancel }: AppointmentFormP
       const [hours, minutes] = data.appointment_time.split(':').map(Number);
       dateObj.setHours(hours, minutes);
 
-      // Prepare the appointment data
-      const appointmentData = {
-        claim_id: claim.id,
-        appointment_datetime: dateObj.toISOString(),
-        appointment_duration_minutes: data.appointment_duration_minutes,
-        location_type: data.location_type,
-        location_address: data.location_address,
-        appointment_contact_name: data.appointment_contact_name,
-        appointment_contact_phone: data.appointment_contact_phone,
-        special_instructions: data.special_instructions || null,
-        appointment_status: 'pending',
-      };
+      // Log the operation for debugging
+      console.log(`[AppointmentForm] ${mode === 'create' ? 'Creating' : 'Updating'} appointment for claim ${claim.id}`);
 
-      // Submit the appointment data
-      createAppointment.mutate(appointmentData);
+      if (mode === 'create') {
+        // Prepare the appointment data for creation
+        const appointmentData = {
+          claim_id: claim.id,
+          appointment_datetime: dateObj.toISOString(),
+          appointment_duration_minutes: 60, // Default value, not shown in UI
+          location_type: data.location_type,
+          location_address: data.location_address,
+          appointment_contact_name: data.appointment_contact_name,
+          appointment_contact_phone: data.appointment_contact_phone,
+          special_instructions: data.special_instructions || null,
+          appointment_status: data.appointment_status,
+        };
+
+        // Submit the appointment data
+        createAppointment.mutate(appointmentData, {
+          onSuccess: (data) => {
+            console.log('[AppointmentForm] Appointment created successfully:', data);
+            toast.success('Appointment scheduled successfully');
+
+            // Call the success callback to trigger refetching
+            onSuccess();
+            setIsSubmitting(false);
+          },
+          onError: (error) => {
+            console.error('Error scheduling appointment:', error);
+            toast.error(`Failed to schedule appointment: ${error.message}`);
+            setError(`Failed to schedule appointment: ${error.message}`);
+            setIsSubmitting(false);
+          }
+        });
+      } else if (mode === 'edit' && appointment) {
+        // Prepare the appointment data for update
+        const appointmentData = {
+          id: appointment.id,
+          claim_id: claim.id,
+          appointment_datetime: dateObj.toISOString(),
+          location_type: data.location_type,
+          location_address: data.location_address,
+          appointment_contact_name: data.appointment_contact_name,
+          appointment_contact_phone: data.appointment_contact_phone,
+          special_instructions: data.special_instructions || null,
+          appointment_status: data.appointment_status,
+        };
+
+        // Submit the appointment data
+        updateAppointment.mutate(appointmentData, {
+          onSuccess: (data) => {
+            console.log('[AppointmentForm] Appointment updated successfully:', data);
+            toast.success('Appointment updated successfully');
+
+            // Call the success callback to trigger refetching
+            onSuccess();
+            setIsSubmitting(false);
+          },
+          onError: (error) => {
+            console.error('Error updating appointment:', error);
+            toast.error(`Failed to update appointment: ${error.message}`);
+            setError(`Failed to update appointment: ${error.message}`);
+            setIsSubmitting(false);
+          }
+        });
+      }
     } catch (error) {
       console.error('Error preparing appointment data:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to schedule appointment';
+      const errorMessage = error instanceof Error ? error.message : 'Failed to process appointment';
       toast.error(errorMessage);
       setError(errorMessage);
       setIsSubmitting(false);
@@ -152,7 +234,7 @@ export function AppointmentForm({ claim, onSuccess, onCancel }: AppointmentFormP
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Schedule New Appointment</CardTitle>
+        <CardTitle>{mode === 'create' ? 'Schedule New Appointment' : 'Edit Appointment'}</CardTitle>
       </CardHeader>
       <CardContent>
         {/* Display error message if there's an error */}
@@ -202,8 +284,17 @@ export function AppointmentForm({ claim, onSuccess, onCancel }: AppointmentFormP
                         <Calendar
                           mode="single"
                           selected={field.value}
-                          onSelect={field.onChange}
-                          disabled={(date) => date < new Date()}
+                          onSelect={(date) => {
+                            if (date) {
+                              field.onChange(date);
+                            }
+                          }}
+                          disabled={(date) => {
+                            // Only disable dates in the past (before today)
+                            const today = new Date();
+                            today.setHours(0, 0, 0, 0);
+                            return date < today;
+                          }}
                           initialFocus
                         />
                       </PopoverContent>
@@ -267,30 +358,7 @@ export function AppointmentForm({ claim, onSuccess, onCancel }: AppointmentFormP
                 )}
               />
 
-              {/* Duration Field */}
-              <FormField
-                control={form.control}
-                name="appointment_duration_minutes"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Duration (minutes)</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        min={15}
-                        max={240}
-                        step={15}
-                        {...field}
-                        disabled={isSubmitting}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      Estimated duration of the appointment
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {/* Duration field removed as per requirements */}
 
               {/* Location Type Field */}
               <FormField
@@ -310,11 +378,11 @@ export function AppointmentForm({ claim, onSuccess, onCancel }: AppointmentFormP
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="client_address">Client Address</SelectItem>
-                        <SelectItem value="owner_address">Owner Address</SelectItem>
-                        <SelectItem value="repair_shop">Repair Shop</SelectItem>
-                        <SelectItem value="incident_scene">Incident Scene</SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
+                        {LocationTypeOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                     <FormDescription>
@@ -426,7 +494,10 @@ export function AppointmentForm({ claim, onSuccess, onCancel }: AppointmentFormP
                 Cancel
               </Button>
               <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? 'Scheduling...' : 'Schedule Appointment'}
+                {isSubmitting
+                  ? (mode === 'create' ? 'Scheduling...' : 'Updating...')
+                  : (mode === 'create' ? 'Schedule Appointment' : 'Update Appointment')
+                }
               </Button>
             </div>
           </form>

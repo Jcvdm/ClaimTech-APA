@@ -2,7 +2,7 @@
 import { apiClient } from "../../client";
 import { type MutationOptions } from "../../client";
 import { toast } from "sonner";
-import { 
+import {
   type ClaimWithRelations,
   type ClaimCreateInput,
   type ClaimUpdateInput,
@@ -28,13 +28,13 @@ export const claimMutations = {
         ...options
       }
     ),
-  
+
   /**
    * Update an existing claim
    */
   update: (
     options?: MutationOptions<ClaimWithRelations, ClaimUpdateInput>
-  ) => 
+  ) =>
     apiClient.mutation<ClaimWithRelations, ClaimUpdateInput>(
       () => apiClient.raw.claim.update.useMutation(),
       {
@@ -45,13 +45,13 @@ export const claimMutations = {
         ...options
       }
     ),
-  
+
   /**
    * Update claim status
    */
   updateStatus: (
     options?: MutationOptions<ClaimWithRelations, { id: string, status: ClaimStatus }>
-  ) => 
+  ) =>
     apiClient.mutation<ClaimWithRelations, { id: string, status: ClaimStatus }>(
       () => apiClient.raw.claim.updateStatus.useMutation(),
       {
@@ -62,18 +62,35 @@ export const claimMutations = {
         ...options
       }
     ),
-  
+
   /**
    * Delete a claim
    */
   delete: (
     options?: MutationOptions<void, { id: string }>
-  ) => 
+  ) =>
     apiClient.mutation<void, { id: string }>(
       () => apiClient.raw.claim.delete.useMutation(),
       {
         onSuccess: (data, variables) => {
           toast.success("Claim deleted successfully");
+          options?.onSuccess?.(data, variables);
+        },
+        ...options
+      }
+    ),
+
+  /**
+   * Record inspection for a claim
+   */
+  recordInspection: (
+    options?: MutationOptions<ClaimWithRelations, { id: string, inspection_datetime: Date }>
+  ) =>
+    apiClient.mutation<ClaimWithRelations, { id: string, inspection_datetime: Date }>(
+      () => apiClient.raw.claim.recordInspection.useMutation(),
+      {
+        onSuccess: (data, variables) => {
+          toast.success("Inspection recorded successfully");
           options?.onSuccess?.(data, variables);
         },
         ...options

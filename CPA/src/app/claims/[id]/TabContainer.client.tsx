@@ -1,12 +1,24 @@
 'use client';
 
+/**
+ * TabContainer - Client-side tab navigation component
+ *
+ * IMPORTANT: This component intentionally does NOT update the URL when tabs are changed.
+ * This is to prevent the server component (page.tsx) from re-rendering, which would
+ * trigger unnecessary data prefetching. The initial tab is still read from the URL
+ * on first load, but subsequent tab changes are handled entirely client-side.
+ *
+ * This approach ensures that once data is prefetched and cached, it remains available
+ * without triggering new server-side prefetches when switching tabs.
+ */
+
 import { useState, useEffect, lazy, Suspense } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { HydrationBoundary, QueryClient, QueryClientProvider, dehydrate } from '@tanstack/react-query';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertTriangle, Loader2 } from 'lucide-react';
-import { CACHE_TIMES } from '@/lib/api/domains/claims/constants';
+import { CACHE_TIMES, QUERY_KEYS } from '@/lib/api/domains/claims/constants';
 import { Skeleton } from '@/components/ui/skeleton';
 
 // Lazy load the appointment tab skeleton for better performance
@@ -45,45 +57,91 @@ export default function TabContainer({ id, tabContents, initialData }: TabContai
       },
     });
 
-    // Hydrate the query client with the initial data
+    // Hydrate the query client with the initial data using both client-side and tRPC-compatible query keys
     if (initialData.claim?.details) {
+      // Client-side query key
       client.setQueryData(
         ['claims', 'details', { id }],
+        initialData.claim.details
+      );
+
+      // tRPC-compatible query key
+      client.setQueryData(
+        QUERY_KEYS.TRPC.DETAILS(id),
         initialData.claim.details
       );
     }
 
     if (initialData.claim?.summary) {
+      // Client-side query key
       client.setQueryData(
         ['claims', 'summary', { id }],
+        initialData.claim.summary
+      );
+
+      // tRPC-compatible query key
+      client.setQueryData(
+        QUERY_KEYS.TRPC.SUMMARY(id),
         initialData.claim.summary
       );
     }
 
     if (initialData.appointments) {
+      // Client-side query key
       client.setQueryData(
         ['appointment', 'getByClaim', { claim_id: id }],
+        initialData.appointments
+      );
+
+      // tRPC-compatible query key
+      client.setQueryData(
+        QUERY_KEYS.TRPC.APPOINTMENTS(id),
         initialData.appointments
       );
     }
 
     if (initialData.attachments) {
+      // Client-side query key
       client.setQueryData(
         ['attachment', 'getByClaim', { claim_id: id }],
+        initialData.attachments
+      );
+
+      // tRPC-compatible query key
+      client.setQueryData(
+        QUERY_KEYS.TRPC.ATTACHMENTS(id),
         initialData.attachments
       );
     }
 
     if (initialData.vehicle && initialData.claim?.details?.vehicle_id) {
+      const vehicleId = initialData.claim.details.vehicle_id;
+
+      // Client-side query key
       client.setQueryData(
-        ['vehicle', 'getById', { id: initialData.claim.details.vehicle_id }],
+        ['vehicle', 'getById', { id: vehicleId }],
+        initialData.vehicle
+      );
+
+      // tRPC-compatible query key
+      client.setQueryData(
+        QUERY_KEYS.TRPC.VEHICLE(vehicleId),
         initialData.vehicle
       );
     }
 
     if (initialData.client && initialData.claim?.details?.client_id) {
+      const clientId = initialData.claim.details.client_id;
+
+      // Client-side query key
       client.setQueryData(
-        ['client', 'getById', { id: initialData.claim.details.client_id }],
+        ['client', 'getById', { id: clientId }],
+        initialData.client
+      );
+
+      // tRPC-compatible query key
+      client.setQueryData(
+        QUERY_KEYS.TRPC.CLIENT(clientId),
         initialData.client
       );
     }
@@ -121,22 +179,39 @@ export default function TabContainer({ id, tabContents, initialData }: TabContai
     // Log tab change
     console.log(`[TabContainer] Tab changed to: ${value}`);
 
-    // Log cache state for the tab
+    // Log cache state for the tab (both client-side and tRPC-compatible query keys)
     if (value === 'appointment') {
-      const appointmentsKey = ['appointment', 'getByClaim', { claim_id: id }];
-      const cachedData = queryClient.getQueryData(appointmentsKey);
+      const clientAppointmentsKey = ['appointment', 'getByClaim', { claim_id: id }];
+      const trpcAppointmentsKey = QUERY_KEYS.TRPC.APPOINTMENTS(id);
+
+      const clientCachedData = queryClient.getQueryData(clientAppointmentsKey);
+      const trpcCachedData = queryClient.getQueryData(trpcAppointmentsKey);
+
       console.log(`[TabContainer] Appointments tab cache:`, {
-        hasCachedData: !!cachedData,
-        dataSize: cachedData ? (Array.isArray(cachedData) ? cachedData.length : 'not an array') : 'no data',
+        client: {
+          hasCachedData: !!clientCachedData,
+          dataSize: clientCachedData ? (Array.isArray(clientCachedData) ? clientCachedData.length : 'not an array') : 'no data',
+        },
+        trpc: {
+          hasCachedData: !!trpcCachedData,
+          dataSize: trpcCachedData ? (Array.isArray(trpcCachedData) ? trpcCachedData.length : 'not an array') : 'no data',
+        }
       });
     }
 
+    // Comment out URL updating to prevent server component re-rendering
+    // This keeps all tab navigation client-side only
+    /*
     // Create a new URLSearchParams object
     const params = new URLSearchParams(searchParams);
     params.set('tab', value);
 
     // Update the URL without refreshing the page
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    */
+
+    // Just log the tab change without updating the URL
+    console.log(`[TabContainer] Tab changed to: ${value} (URL not updated to prevent server re-renders)`);
 
     try {
       // Simulate loading/fetching data for the tab
@@ -149,12 +224,16 @@ export default function TabContainer({ id, tabContents, initialData }: TabContai
     }
   };
 
-  // Update the active tab when the URL changes
+  // Update the active tab when the URL changes (only on initial load)
   useEffect(() => {
-    if (tabParam && validTabs.includes(tabParam) && tabParam !== activeTab) {
+    // Only set the active tab from URL on initial load
+    if (tabParam && validTabs.includes(tabParam)) {
+      console.log(`[TabContainer] Setting initial tab from URL: ${tabParam}`);
       setActiveTab(tabParam);
     }
-  }, [tabParam, activeTab, validTabs]);
+    // Remove the dependency on activeTab to prevent this from running when activeTab changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabParam, validTabs]);
 
   // Log when component mounts and cache settings
   useEffect(() => {
@@ -164,15 +243,28 @@ export default function TabContainer({ id, tabContents, initialData }: TabContai
       gcTime: CACHE_TIMES.ACTIVE_SESSION.GC_TIME / (60 * 1000) + ' minutes',
     });
 
-    // Log the current cache state
-    const detailsKey = ['claims', 'details', { id }];
-    const summaryKey = ['claims', 'summary', { id }];
-    const appointmentsKey = ['appointment', 'getByClaim', { claim_id: id }];
+    // Log the current cache state for both client-side and tRPC-compatible query keys
+    const clientDetailsKey = ['claims', 'details', { id }];
+    const clientSummaryKey = ['claims', 'summary', { id }];
+    const clientAppointmentsKey = ['appointment', 'getByClaim', { claim_id: id }];
+
+    const trpcDetailsKey = QUERY_KEYS.TRPC.DETAILS(id);
+    const trpcSummaryKey = QUERY_KEYS.TRPC.SUMMARY(id);
+    const trpcAppointmentsKey = QUERY_KEYS.TRPC.APPOINTMENTS(id);
 
     console.log(`[TabContainer] Cache state:`, {
-      details: !!queryClient.getQueryData(detailsKey),
-      summary: !!queryClient.getQueryData(summaryKey),
-      appointments: !!queryClient.getQueryData(appointmentsKey),
+      details: {
+        client: !!queryClient.getQueryData(clientDetailsKey),
+        trpc: !!queryClient.getQueryData(trpcDetailsKey)
+      },
+      summary: {
+        client: !!queryClient.getQueryData(clientSummaryKey),
+        trpc: !!queryClient.getQueryData(trpcSummaryKey)
+      },
+      appointments: {
+        client: !!queryClient.getQueryData(clientAppointmentsKey),
+        trpc: !!queryClient.getQueryData(trpcAppointmentsKey)
+      }
     });
 
     // Add a global query cache listener to log when queries are refetched

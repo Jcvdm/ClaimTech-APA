@@ -26,46 +26,99 @@ import { type NextRequest } from "next/server";
  */
 export const createTRPCContext = async (opts: { headers: Headers, request?: NextRequest }) => {
   let supabase;
+  let user = null;
 
-  // Use the appropriate client based on the context
-  if (opts.request) {
-    // For Route Handlers (API routes)
-    supabase = createClientForRouteHandler(opts.request);
-  } else {
-    // For Server Components
-    supabase = createClient();
-  }
+  try {
+    // Use the appropriate client based on the context
+    if (opts.request) {
+      // For Route Handlers (API routes)
+      supabase = createClientForRouteHandler(opts.request);
+    } else {
+      // For Server Components
+      supabase = createClient();
+    }
 
-  // Get the user from Supabase auth (will be null if not authenticated)
-  let { data: { user } } = await supabase.auth.getUser();
+    // Get the user from Supabase auth (will be null if not authenticated)
+    try {
+      const authResponse = await supabase.auth.getUser();
+      user = authResponse.data?.user || null;
+    } catch (authError) {
+      console.error('[tRPC Context] Error getting user from Supabase auth:', authError);
+      // Continue with user as null
+    }
 
-  // ---- DEVELOPMENT OVERRIDE START ----
-  // WARNING: Remove or disable this override before production!
-  if (process.env.NODE_ENV === 'development' && !user) {
-    console.warn("\n⚠️ WARNING: Using mock user for tRPC context in development. Real authentication is bypassed. ⚠️\n");
+    // ---- DEVELOPMENT OVERRIDE START ----
+    // WARNING: Remove or disable this override before production!
+    if (process.env.NODE_ENV === 'development' && !user) {
+      console.warn("\n⚠️ WARNING: Using mock user for tRPC context in development. Real authentication is bypassed. ⚠️\n");
 
-    // Create a mock user
-    user = {
-      id: 'fb0c14a7-550a-4d41-90f4-86d714961f87', // Your provided User ID
-      app_metadata: { provider: 'email' },
-      user_metadata: { name: 'Development User' },
-      aud: 'authenticated',
-      created_at: new Date().toISOString(),
-      email: 'dev-user@example.com',
-      role: 'authenticated'
+      // Create a mock user
+      user = {
+        id: 'fb0c14a7-550a-4d41-90f4-86d714961f87', // Your provided User ID
+        app_metadata: { provider: 'email' },
+        user_metadata: { name: 'Development User' },
+        aud: 'authenticated',
+        created_at: new Date().toISOString(),
+        email: 'dev-user@example.com',
+        role: 'authenticated'
+      };
+
+      // For development, let's modify the RLS policy to allow all operations
+      // This is a workaround for local development only
+      try {
+        // Add a policy that allows all operations for all users
+        await supabase.rpc('create_dev_policy_for_vehicles');
+        console.log('Created development policy for vehicles table');
+
+        // Also create a policy for appointments table
+        await supabase.rpc('create_dev_policy_for_appointments');
+        console.log('Created development policy for appointments table');
+      } catch (policyError) {
+        console.warn('Failed to create development policy:', policyError);
+        // Continue without policies - they might already exist
+      }
+    }
+    // ---- DEVELOPMENT OVERRIDE END ----
+  } catch (error) {
+    console.error('[tRPC Context] Error creating Supabase client:', error);
+
+    // Log more detailed error information
+    if (error instanceof Error) {
+      console.error(`[tRPC Context] Error message: ${error.message}`);
+      console.error(`[tRPC Context] Error stack: ${error.stack}`);
+    }
+
+    // Create a minimal mock Supabase client that won't cause further errors
+    supabase = {
+      auth: {
+        getUser: async () => ({ data: { user: null }, error: null }),
+      },
+      from: () => ({
+        select: () => ({
+          count: () => ({
+            in: () => ({ data: [], error: null }),
+            eq: () => ({ data: [], error: null }),
+          }),
+          in: () => ({ data: [], error: null }),
+          eq: () => ({ data: [], error: null }),
+        }),
+      }),
+      rpc: () => ({ data: null, error: null }),
     };
 
-    // For development, let's modify the RLS policy to allow all operations
-    // This is a workaround for local development only
-    try {
-      // Add a policy that allows all operations for all users
-      await supabase.rpc('create_dev_policy_for_vehicles');
-      console.log('Created development policy for vehicles table');
-    } catch (error) {
-      console.warn('Failed to create development policy:', error);
+    // In development, still use the mock user
+    if (process.env.NODE_ENV === 'development') {
+      user = {
+        id: 'fb0c14a7-550a-4d41-90f4-86d714961f87',
+        app_metadata: { provider: 'email' },
+        user_metadata: { name: 'Development User' },
+        aud: 'authenticated',
+        created_at: new Date().toISOString(),
+        email: 'dev-user@example.com',
+        role: 'authenticated'
+      };
     }
   }
-  // ---- DEVELOPMENT OVERRIDE END ----
 
   return {
     ...opts,

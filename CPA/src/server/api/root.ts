@@ -6,6 +6,7 @@ import { attachmentRouter } from "@/server/api/routers/attachment";
 import { appointmentRouter } from "@/server/api/routers/appointment";
 import { createCallerFactory, createTRPCRouter } from "@/server/api/trpc";
 import { lookupRouter } from "@/server/api/routers/lookup";
+import { inspectionRouter } from "@/server/api/routers/inspection";
 
 /**
  * This is the primary router for your server.
@@ -20,6 +21,7 @@ export const appRouter = createTRPCRouter({
 	attachment: attachmentRouter,
 	appointment: appointmentRouter,
 	lookup: lookupRouter,
+	inspection: inspectionRouter,
 });
 
 // export type definition of API

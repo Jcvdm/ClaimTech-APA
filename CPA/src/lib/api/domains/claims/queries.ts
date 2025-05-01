@@ -81,10 +81,40 @@ export const claimQueries = {
       {
         enabled: !!id && isValidUUID(id),
         staleTime: 30 * 1000, // 30 seconds
-        cacheTime: 5 * 60 * 1000, // 5 minutes
+        gcTime: 5 * 60 * 1000, // 5 minutes (renamed from cacheTime)
         ...options
       }
     );
+  },
+
+  /**
+   * Get claim summary directly without using hooks (safe for components)
+   * @param id The claim ID
+   * @returns Promise that resolves to the claim summary
+   */
+  fetchClaimSummary: async (id: string): Promise<ClaimSummary | null> => {
+    if (!id) return null;
+
+    // Function to validate UUID format
+    const isValidUUID = (id: string): boolean => {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      return uuidRegex.test(id);
+    };
+
+    if (!isValidUUID(id)) {
+      console.warn(`[fetchClaimSummary] Invalid UUID format for claim ID: ${id}`);
+      return null;
+    }
+
+    try {
+      console.log(`[fetchClaimSummary] Fetching summary for claim ${id}`);
+      const data = await apiClient.raw.claim.getSummary.query({ id });
+      console.log(`[fetchClaimSummary] Successfully fetched summary for claim ${id}`);
+      return data;
+    } catch (error) {
+      console.error(`[fetchClaimSummary] Error fetching summary for claim ${id}:`, error);
+      return null;
+    }
   },
 
   /**

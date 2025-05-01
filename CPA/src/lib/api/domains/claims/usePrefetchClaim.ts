@@ -9,6 +9,7 @@ import { QUERY_KEYS, CACHE_TIMES } from './constants';
 // Constants for prefetching behavior
 const PREFETCH_DEBOUNCE_MS = 300; // Debounce hover events
 const PREFETCH_COOLDOWN_MS = 10000; // Don't prefetch the same claim within 10 seconds
+const PREFETCH_LOG_ENABLED = true; // Enable/disable prefetch logging
 
 /**
  * Hook for prefetching claim data when hovering over a claim in the list
@@ -18,21 +19,27 @@ export function usePrefetchClaim() {
   const queryClient = useQueryClient();
   const lastPrefetchTime = useRef<Record<string, number>>({});
   const debounceTimers = useRef<Record<string, NodeJS.Timeout>>({});
-  
+
   /**
    * Check if data is already cached and fresh
    */
   const isCachedAndFresh = useCallback((queryKey: unknown[], staleTime: number) => {
     const query = queryClient.getQueryCache().find(queryKey);
     if (!query) return false;
-    
+
     const state = query.state;
     if (!state.data) return false;
-    
+
     const dataUpdatedAt = state.dataUpdatedAt;
-    return Date.now() - dataUpdatedAt < staleTime;
+    const isFresh = Date.now() - dataUpdatedAt < staleTime;
+
+    if (PREFETCH_LOG_ENABLED && isFresh) {
+      console.log(`[Prefetch] Data for ${JSON.stringify(queryKey)} is already fresh in cache (age: ${Date.now() - dataUpdatedAt}ms)`);
+    }
+
+    return isFresh;
   }, [queryClient]);
-  
+
   /**
    * Prefetch claim summary data
    */
@@ -42,36 +49,54 @@ export function usePrefetchClaim() {
       const now = Date.now();
       const lastTime = lastPrefetchTime.current[`summary-${id}`] || 0;
       if (now - lastTime < PREFETCH_COOLDOWN_MS) {
-        console.log(`[Prefetch] Summary for ${id} skipped (on cooldown)`);
+        if (PREFETCH_LOG_ENABLED) {
+          console.log(`[Prefetch] Summary for ${id} skipped (on cooldown)`);
+        }
         return;
       }
-      
-      // Skip if already cached and fresh
-      const queryKey = getQueryKey(api.claim.getSummary, { id });
-      if (isCachedAndFresh(queryKey, CACHE_TIMES.STALE_TIME.SUMMARY)) {
-        console.log(`[Prefetch] Summary for ${id} skipped (fresh in cache)`);
+
+      // Check both tRPC and client-side query keys
+      const trpcQueryKey = getQueryKey(api.claim.getSummary, { id });
+      const clientQueryKey = QUERY_KEYS.getSummaryKey(id);
+
+      // Skip if already cached and fresh in either format
+      if (isCachedAndFresh(trpcQueryKey, CACHE_TIMES.STALE_TIME.SUMMARY) ||
+          isCachedAndFresh(clientQueryKey, CACHE_TIMES.STALE_TIME.SUMMARY)) {
+        if (PREFETCH_LOG_ENABLED) {
+          console.log(`[Prefetch] Summary for ${id} skipped (fresh in cache)`);
+        }
         return;
       }
-      
+
       // Update last prefetch time
       lastPrefetchTime.current[`summary-${id}`] = now;
-      
-      console.log(`[Prefetch] Prefetching summary for ${id}`);
-      
+
+      if (PREFETCH_LOG_ENABLED) {
+        console.log(`[Prefetch] Prefetching summary for ${id}`);
+      }
+
       // Use prefetchQuery for better integration with React Query
       await queryClient.prefetchQuery({
-        queryKey,
+        queryKey: trpcQueryKey,
         queryFn: () => api.claim.getSummary.query({ id }),
         staleTime: CACHE_TIMES.STALE_TIME.SUMMARY,
       });
-      
-      console.log(`[Prefetch] Summary for ${id} prefetched successfully`);
+
+      // Also set the data in the client-side query key format
+      const data = queryClient.getQueryData(trpcQueryKey);
+      if (data) {
+        queryClient.setQueryData(clientQueryKey, data);
+      }
+
+      if (PREFETCH_LOG_ENABLED) {
+        console.log(`[Prefetch] Summary for ${id} prefetched successfully`);
+      }
     } catch (error) {
       console.error(`[Prefetch] Error prefetching summary for ${id}:`, error);
       // Don't rethrow - prefetching should fail silently
     }
   }, [queryClient, isCachedAndFresh]);
-  
+
   /**
    * Prefetch claim details data
    */
@@ -81,36 +106,54 @@ export function usePrefetchClaim() {
       const now = Date.now();
       const lastTime = lastPrefetchTime.current[`details-${id}`] || 0;
       if (now - lastTime < PREFETCH_COOLDOWN_MS) {
-        console.log(`[Prefetch] Details for ${id} skipped (on cooldown)`);
+        if (PREFETCH_LOG_ENABLED) {
+          console.log(`[Prefetch] Details for ${id} skipped (on cooldown)`);
+        }
         return;
       }
-      
-      // Skip if already cached and fresh
-      const queryKey = getQueryKey(api.claim.getDetails, { id });
-      if (isCachedAndFresh(queryKey, CACHE_TIMES.STALE_TIME.DETAILS)) {
-        console.log(`[Prefetch] Details for ${id} skipped (fresh in cache)`);
+
+      // Check both tRPC and client-side query keys
+      const trpcQueryKey = getQueryKey(api.claim.getDetails, { id });
+      const clientQueryKey = QUERY_KEYS.getDetailsKey(id);
+
+      // Skip if already cached and fresh in either format
+      if (isCachedAndFresh(trpcQueryKey, CACHE_TIMES.STALE_TIME.DETAILS) ||
+          isCachedAndFresh(clientQueryKey, CACHE_TIMES.STALE_TIME.DETAILS)) {
+        if (PREFETCH_LOG_ENABLED) {
+          console.log(`[Prefetch] Details for ${id} skipped (fresh in cache)`);
+        }
         return;
       }
-      
+
       // Update last prefetch time
       lastPrefetchTime.current[`details-${id}`] = now;
-      
-      console.log(`[Prefetch] Prefetching details for ${id}`);
-      
+
+      if (PREFETCH_LOG_ENABLED) {
+        console.log(`[Prefetch] Prefetching details for ${id}`);
+      }
+
       // Use prefetchQuery for better integration with React Query
       await queryClient.prefetchQuery({
-        queryKey,
+        queryKey: trpcQueryKey,
         queryFn: () => api.claim.getDetails.query({ id }),
         staleTime: CACHE_TIMES.STALE_TIME.DETAILS,
       });
-      
-      console.log(`[Prefetch] Details for ${id} prefetched successfully`);
+
+      // Also set the data in the client-side query key format
+      const data = queryClient.getQueryData(trpcQueryKey);
+      if (data) {
+        queryClient.setQueryData(clientQueryKey, data);
+      }
+
+      if (PREFETCH_LOG_ENABLED) {
+        console.log(`[Prefetch] Details for ${id} prefetched successfully`);
+      }
     } catch (error) {
       console.error(`[Prefetch] Error prefetching details for ${id}:`, error);
       // Don't rethrow - prefetching should fail silently
     }
   }, [queryClient, isCachedAndFresh]);
-  
+
   /**
    * Prefetch both summary and details data
    */
@@ -126,7 +169,7 @@ export function usePrefetchClaim() {
       // Don't rethrow - prefetching should fail silently
     }
   }, [prefetchSummary, prefetchDetails]);
-  
+
   /**
    * Debounced prefetch function for row hover
    */
@@ -135,21 +178,21 @@ export function usePrefetchClaim() {
     if (debounceTimers.current[id]) {
       clearTimeout(debounceTimers.current[id]);
     }
-    
+
     // Set a new timer
     debounceTimers.current[id] = setTimeout(() => {
       prefetchClaimData(id);
       delete debounceTimers.current[id];
     }, PREFETCH_DEBOUNCE_MS);
   }, [prefetchClaimData]);
-  
+
   /**
    * Handler for row hover
    */
   const handleRowHover = useCallback((id: string) => {
     debouncedPrefetch(id);
   }, [debouncedPrefetch]);
-  
+
   /**
    * Handler for "Open Claim" button hover
    * This prefetches immediately without debounce
@@ -157,7 +200,7 @@ export function usePrefetchClaim() {
   const handleOpenClaimHover = useCallback((id: string) => {
     prefetchClaimData(id);
   }, [prefetchClaimData]);
-  
+
   // Clean up any timers on unmount
   useCallback(() => {
     return () => {
@@ -166,7 +209,7 @@ export function usePrefetchClaim() {
       });
     };
   }, []);
-  
+
   return {
     handleRowHover,
     handleOpenClaimHover,

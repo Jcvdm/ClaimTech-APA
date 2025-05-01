@@ -4,14 +4,28 @@ import { ClaimDetails } from "./ClaimDetails";
 import { useClaimDetailsData } from '@/features/claims/hooks/useClaimDetailsData';
 import { Skeleton } from "@/components/ui/skeleton";
 import { ClaimListError } from "./ClaimList/ClaimListError";
+import { useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 
 interface ClientClaimDetailsProps {
   id: string;
   initialData?: any; // Optional initial data from server prefetch
 }
 
-export function ClientClaimDetails({ id }: { id: string }) {
-  const { data: claim, isLoading, error } = useClaimDetailsData(id);
+export function ClientClaimDetails({ id, initialData }: ClientClaimDetailsProps) {
+  const queryClient = useQueryClient();
+
+  // If initialData is provided, use it instead of fetching
+  const { data: claim, isLoading, error } = useClaimDetailsData(id, {
+    initialData: initialData?.details || initialData,
+    // Disable fetching if we have initialData
+    enabled: !initialData
+  });
+
+  // Log for debugging
+  useEffect(() => {
+    console.log(`[ClientClaimDetails] Rendering with initialData: ${!!initialData}, fetching: ${!initialData && isLoading}`);
+  }, [initialData, isLoading]);
 
   if (isLoading) return <ClaimDetailsSkeleton />;
   if (error) return <ClaimListError message={error?.message} />;

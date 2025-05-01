@@ -435,20 +435,40 @@ export function useManualCacheControl() {
 /**
  * Hook for accessing claim data with the hybrid caching strategy
  * This combines the fallback mechanism with proactive caching
+ *
+ * @param id The claim ID
+ * @param options Options for the hook (initialData, enabled, staleTime, gcTime)
+ * @returns The claim data, loading state, and error
  */
-export function useHybridClaimData(id: string | undefined | null) {
+export function useHybridClaimData(
+  id: string | undefined | null,
+  options?: {
+    initialData?: any;
+    enabled?: boolean;
+    staleTime?: number;
+    gcTime?: number;
+  }
+) {
   const queryClient = useQueryClient();
+
+  // Log for debugging
+  useEffect(() => {
+    if (options?.initialData) {
+      console.log(`[useHybridClaimData] Using initialData for ${id}, skipping fetch`);
+    }
+  }, [id, options?.initialData]);
 
   // Try to get details first, fall back to getSummary if getDetails fails
   const detailsQuery = api.claim.getDetails.useQuery(
     { id: id || '' },
     {
-      enabled: !!id,
+      enabled: options?.enabled !== false && !!id,
       retry: 1,
       retryDelay: 1000,
-      staleTime: CACHE_TIMES.STALE_TIME.DETAILS,
-      gcTime: CACHE_TIMES.GC_TIME.DETAILS,
+      staleTime: options?.staleTime ?? CACHE_TIMES.STALE_TIME.DETAILS,
+      gcTime: options?.gcTime ?? CACHE_TIMES.GC_TIME.DETAILS,
       refetchOnWindowFocus: false,
+      initialData: options?.initialData,
     }
   );
 
@@ -456,12 +476,14 @@ export function useHybridClaimData(id: string | undefined | null) {
   const summaryQuery = api.claim.getSummary.useQuery(
     { id: id || '' },
     {
-      enabled: !!id && detailsQuery.isError,
+      enabled: !!id && detailsQuery.isError && options?.enabled !== false,
       retry: 1,
       retryDelay: 1000,
-      staleTime: CACHE_TIMES.STALE_TIME.SUMMARY,
-      gcTime: CACHE_TIMES.GC_TIME.SUMMARY,
+      staleTime: options?.staleTime ?? CACHE_TIMES.STALE_TIME.SUMMARY,
+      gcTime: options?.gcTime ?? CACHE_TIMES.GC_TIME.SUMMARY,
       refetchOnWindowFocus: false,
+      // Don't use initialData for summary if we're using it for details
+      initialData: options?.initialData && detailsQuery.isError ? options.initialData : undefined,
     }
   );
 

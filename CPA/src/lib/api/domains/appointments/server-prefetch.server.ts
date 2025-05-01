@@ -1,37 +1,7 @@
 import "server-only";
-import { createTRPCContext } from "@/server/api/trpc";
-import { createCaller } from "@/server/api/root";
 import { cache } from "react";
+import { createServerCaller } from "@/lib/api/utils/createServerCaller";
 import { type Appointment } from "./index";
-import { NextRequest } from "next/server";
-
-/**
- * Create a server-side tRPC caller
- * This is different from the RSC api import from @/trpc/server.server
- */
-const createServerCaller = async () => {
-  try {
-    // Create a mock request object with headers
-    const mockRequest = new NextRequest('http://localhost:3000', {
-      headers: {
-        'x-trpc-source': 'server',
-        'content-type': 'application/json',
-      },
-    });
-
-    // Create a proper context with the mock request
-    const ctx = await createTRPCContext({
-      headers: mockRequest.headers,
-      request: mockRequest,
-    });
-
-    // Use the createCaller from root.ts with our context
-    return createCaller(ctx);
-  } catch (error) {
-    console.error('[Server Caller] Error creating server caller:', error);
-    throw error;
-  }
-};
 
 /**
  * Server-side prefetch for appointments related to a claim

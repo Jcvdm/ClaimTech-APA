@@ -218,17 +218,19 @@ export function DataTable<TData, TValue>({
                     const isExpanded = row.getIsExpanded();
                     const cells = row.getVisibleCells();
 
-                    // Add debugging
-                    console.log(`Row ${row.id} cells:`, cells);
-                    if (cells.length > 0) {
-                      console.log(`First cell structure:`, {
-                        id: cells[0].id,
-                        column: {
-                          id: cells[0].column.id,
-                          columnDef: cells[0].column.columnDef,
-                        },
-                        getContext: typeof cells[0].getContext === 'function' ? 'function' : 'not a function'
-                      });
+                    // Add debugging (only for the first row to avoid console spam)
+                    if (row.index === 0) {
+                      console.log(`First row (${row.id}) cells:`, cells);
+                      if (cells.length > 0) {
+                        console.log(`First cell structure:`, {
+                          id: cells[0].id,
+                          column: {
+                            id: cells[0].column.id,
+                            columnDef: cells[0].column.columnDef,
+                          },
+                          getContext: typeof cells[0].getContext === 'function' ? 'function' : 'not a function'
+                        });
+                      }
                     }
 
                     return (

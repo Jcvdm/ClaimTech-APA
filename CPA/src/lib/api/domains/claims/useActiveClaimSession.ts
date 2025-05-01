@@ -24,14 +24,28 @@ export function useActiveClaimSession(claimId: string | null | undefined) {
     const detailsQueryKey = createEntityQueryKey('claim', 'getDetails', claimId);
     const summaryQueryKey = createEntityQueryKey('claim', 'getSummary', claimId);
 
-    // Extend cache times for details
+    // Also set for tRPC-compatible query keys
+    const trpcDetailsQueryKey = [['trpc', 'claim', 'getDetails'], { input: { id: claimId }, type: 'query' }];
+    const trpcSummaryQueryKey = [['trpc', 'claim', 'getSummary'], { input: { id: claimId }, type: 'query' }];
+
+    // Extend cache times for details (both client-side and tRPC-compatible query keys)
     queryClient.setQueryDefaults(detailsQueryKey, {
       staleTime: CACHE_TIMES.ACTIVE_SESSION.STALE_TIME,
       gcTime: CACHE_TIMES.ACTIVE_SESSION.GC_TIME,
     });
 
-    // Extend cache times for summary
+    queryClient.setQueryDefaults(trpcDetailsQueryKey, {
+      staleTime: CACHE_TIMES.ACTIVE_SESSION.STALE_TIME,
+      gcTime: CACHE_TIMES.ACTIVE_SESSION.GC_TIME,
+    });
+
+    // Extend cache times for summary (both client-side and tRPC-compatible query keys)
     queryClient.setQueryDefaults(summaryQueryKey, {
+      staleTime: CACHE_TIMES.ACTIVE_SESSION.STALE_TIME,
+      gcTime: CACHE_TIMES.ACTIVE_SESSION.GC_TIME,
+    });
+
+    queryClient.setQueryDefaults(trpcSummaryQueryKey, {
       staleTime: CACHE_TIMES.ACTIVE_SESSION.STALE_TIME,
       gcTime: CACHE_TIMES.ACTIVE_SESSION.GC_TIME,
     });
@@ -62,13 +76,23 @@ export function useActiveClaimSession(claimId: string | null | undefined) {
       window.removeEventListener('mousemove', updateActivity);
       window.removeEventListener('scroll', updateActivity);
 
-      // Reset to default cache times
+      // Reset to default cache times (both client-side and tRPC-compatible query keys)
       queryClient.setQueryDefaults(detailsQueryKey, {
         staleTime: CACHE_TIMES.STALE_TIME.DETAILS,
         gcTime: CACHE_TIMES.GC_TIME.DETAILS,
       });
 
+      queryClient.setQueryDefaults(trpcDetailsQueryKey, {
+        staleTime: CACHE_TIMES.STALE_TIME.DETAILS,
+        gcTime: CACHE_TIMES.GC_TIME.DETAILS,
+      });
+
       queryClient.setQueryDefaults(summaryQueryKey, {
+        staleTime: CACHE_TIMES.STALE_TIME.SUMMARY,
+        gcTime: CACHE_TIMES.GC_TIME.SUMMARY,
+      });
+
+      queryClient.setQueryDefaults(trpcSummaryQueryKey, {
         staleTime: CACHE_TIMES.STALE_TIME.SUMMARY,
         gcTime: CACHE_TIMES.GC_TIME.SUMMARY,
       });

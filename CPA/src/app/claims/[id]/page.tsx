@@ -6,8 +6,9 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
-// Import the client-side session manager wrapper
+// Import the client-side components
 import ClaimSessionManagerWrapper from "./ClaimSessionManagerWrapper.client";
+import { ClientClaimDetails } from "@/features/claims/components/ClientClaimDetails";
 
 // Server-side prefetch functions
 import { prefetchClaimServer } from "@/lib/api/domains/claims/server-prefetch.server";
@@ -16,6 +17,7 @@ import { prefetchAttachmentsServer } from "@/lib/api/domains/attachments/server-
 import { prefetchVehicleServer } from "@/lib/api/domains/vehicles/server-prefetch.server";
 import { prefetchClientServer } from "@/lib/api/domains/clients/server-prefetch.server";
 import { prefetchProvincesServer, prefetchLossAdjustersServer } from "@/lib/api/domains/lookups/server-prefetch.server";
+import { prefetchInspectionsByClaimServer } from "@/lib/api/domains/inspections/server-prefetch.server";
 
 // Tab components
 import TabContainer from "./TabContainer.client";
@@ -45,6 +47,10 @@ export default async function ClaimDetailsPage({ params }: { params: { id: strin
     console.error(`[ClaimDetailsPage] No claim data found for ${id}, returning 404.`);
     notFound();
   }
+
+  // Prefetch inspection data
+  const inspectionsData = await prefetchInspectionsByClaimServer(id);
+  console.log(`[ClaimDetailsPage] Prefetched ${inspectionsData.length} inspections for claim ${id}`);
 
   // All related data is now included in the claimData object
   const {
@@ -77,7 +83,7 @@ export default async function ClaimDetailsPage({ params }: { params: { id: strin
     inspection: (
       <ErrorBoundary fallback={<div>Error loading inspection</div>}>
         <Suspense fallback={<div>Loading inspection...</div>}>
-          <InspectionTab />
+          <InspectionTab inspectionsData={inspectionsData} />
         </Suspense>
       </ErrorBoundary>
     ),
@@ -122,6 +128,14 @@ export default async function ClaimDetailsPage({ params }: { params: { id: strin
       {/* Add the claim session manager */}
       <ClaimSessionManagerWrapper claimId={id} />
 
+      {/* Commenting out for now as we're using TabContainer
+      <ErrorBoundary fallback={<div>Error loading claim details</div>}>
+        <Suspense fallback={<div>Loading claim details...</div>}>
+          <ClientClaimDetails id={id} initialData={claimData} />
+        </Suspense>
+      </ErrorBoundary>
+      */}
+
       <TabContainer
         id={id}
         tabContents={tabContents}
@@ -130,7 +144,8 @@ export default async function ClaimDetailsPage({ params }: { params: { id: strin
           appointments: appointmentsData,
           attachments: attachmentsData,
           vehicle: vehicleData,
-          client: clientData
+          client: clientData,
+          inspections: inspectionsData
         }}
       />
     </div>

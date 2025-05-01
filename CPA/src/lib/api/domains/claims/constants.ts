@@ -44,6 +44,19 @@ export const QUERY_KEYS = {
   getSummaryKey: (id: string) => ['claims', 'summary', id] as const,
   getDetailsKey: (id: string) => ['claims', 'details', id] as const,
   getListKey: (params: any) => ['claims', 'list', params] as const,
+
+  // tRPC-compatible query keys for server-side prefetching
+  // These match the internal structure used by tRPC for better cache hits
+  TRPC: {
+    SUMMARY: (id: string) => [['trpc', 'claim', 'getSummary'], { input: { id }, type: 'query' }] as const,
+    DETAILS: (id: string) => [['trpc', 'claim', 'getDetails'], { input: { id }, type: 'query' }] as const,
+    LIST: (params: any) => [['trpc', 'claim', 'getAll'], { input: params, type: 'query' }] as const,
+    COUNTS: () => [['trpc', 'claim', 'getCounts'], { input: undefined, type: 'query' }] as const,
+    APPOINTMENTS: (claimId: string) => [['trpc', 'appointment', 'getByClaim'], { input: { claim_id: claimId }, type: 'query' }] as const,
+    ATTACHMENTS: (claimId: string) => [['trpc', 'attachment', 'getByClaim'], { input: { claim_id: claimId }, type: 'query' }] as const,
+    VEHICLE: (vehicleId: string) => [['trpc', 'vehicle', 'getById'], { input: { id: vehicleId }, type: 'query' }] as const,
+    CLIENT: (clientId: string) => [['trpc', 'client', 'getById'], { input: { id: clientId }, type: 'query' }] as const,
+  }
 };
 
 // Prefetch settings

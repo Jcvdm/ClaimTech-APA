@@ -32,6 +32,7 @@ const ClaimWithRelationsOutputSchema = z.object({
   created_at: z.coerce.date().nullable(),
   created_by_employee_id: z.string().uuid().nullable(),
   updated_by_employee_id: z.string().uuid().nullable(),
+  inspection_datetime: z.coerce.date().nullable(), // Added inspection_datetime field
   client: z.object({
     name: z.string()
   }).nullable(),
@@ -98,6 +99,7 @@ const ClaimDetailsOutputSchema = ClaimSummaryOutputSchema.extend({
   loss_adjuster: LossAdjusterSchema,
   insured_name: z.string().nullable(),
   insured_contact: z.string().nullable(),
+  inspection_datetime: z.coerce.date().nullable(), // Added inspection_datetime field
   appointments: z.array(AppointmentSchema).optional().default([]),
   latest_appointment: AppointmentSchema.nullable().optional()
 });
@@ -164,7 +166,100 @@ const ClaimUpdateStatusInputSchema = z.object({
   status: z.nativeEnum(ClaimStatus),
 });
 
+// Define input schema for recording inspection
+// Note: This is kept for backward compatibility but new code should use the schema in the inspections domain
+const ClaimRecordInspectionInputSchema = z.object({
+  // Accept either id or claim_id for backward compatibility
+  id: z.string().uuid().optional(),
+  claim_id: z.string().uuid().optional(),
+  inspection_datetime: z.date(),
+})
+// Add a refinement to ensure at least one of id or claim_id is provided
+.refine(data => data.id || data.claim_id, {
+  message: "Either id or claim_id must be provided",
+  path: ["id"]
+});
+
 export const claimRouter = createTRPCRouter({
+  // Record inspection for a claim
+  // Note: This is kept for backward compatibility but new code should use the inspection domain
+  recordInspection: protectedProcedure
+    .input(ClaimRecordInspectionInputSchema)
+    .output(ClaimWithRelationsOutputSchema)
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const { id, claim_id, inspection_datetime } = input;
+
+        // Log the input for debugging
+        console.log(`[recordInspection] Input:`, JSON.stringify({ id, claim_id, inspection_datetime }));
+
+        // Use claim_id if provided, otherwise use id
+        const claimId = claim_id || id;
+
+        if (!claimId) {
+          console.error(`[recordInspection] Missing claim ID. Input:`, JSON.stringify(input));
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Either id or claim_id must be provided'
+          });
+        }
+
+        console.log(`[recordInspection] Recording inspection for claim ${claimId} at ${inspection_datetime}`);
+
+        // Add audit trail and update status to In Progress
+        const { data, error } = await ctx.supabase
+          .from('claims')
+          .update({
+            status: ClaimStatus.IN_PROGRESS, // Use the enum value
+            inspection_datetime: inspection_datetime.toISOString(),
+            updated_by_employee_id: ctx.user.id
+          })
+          .eq('id', claimId)
+          .select('id, job_number, client_reference, status, instruction, date_of_loss, time_of_loss, type_of_loss, accident_description, claims_handler_name, claims_handler_contact, claims_handler_email, province_id, created_at, created_by_employee_id, updated_by_employee_id, clients(name), vehicles(make, model, registration_number), inspection_datetime')
+          .single();
+
+        if (error) {
+          console.error("Error recording inspection:", error);
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: `Failed to record inspection for claim ${claim_id}: ${error.message}`,
+            cause: error
+          });
+        }
+
+        if (!data) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: `Failed to record inspection for claim ${claim_id}: No data returned`
+          });
+        }
+
+        // Explicitly transform the data to match the expected schema
+        const transformedData = {
+          ...data,
+          // Ensure these fields are properly formatted
+          status: data.status || ClaimStatus.IN_PROGRESS,
+          date_of_loss: data.date_of_loss ? new Date(data.date_of_loss) : null,
+          created_at: data.created_at ? new Date(data.created_at) : null,
+          inspection_datetime: data.inspection_datetime ? new Date(data.inspection_datetime) : null,
+          // Handle nested objects
+          client: data.clients ? (
+            Array.isArray(data.clients) ? data.clients[0] ?? null :
+            typeof data.clients === 'object' ? data.clients : null
+          ) : null,
+          vehicle: data.vehicles ? (
+            Array.isArray(data.vehicles) ? data.vehicles[0] ?? null :
+            typeof data.vehicles === 'object' ? data.vehicles : null
+          ) : null,
+        };
+
+        // Validate the transformed data against the schema
+        return ClaimWithRelationsOutputSchema.parse(transformedData);
+      } catch (error) {
+        console.error("Error in recordInspection procedure:", error);
+        throw error;
+      }
+    }),
   getAll: publicProcedure
     .output(z.array(ClaimWithRelationsOutputSchema))
     .query(async ({ ctx }) => {
@@ -172,7 +267,7 @@ export const claimRouter = createTRPCRouter({
         // Query claims with joined data from clients and vehicles tables
         const { data, error } = await ctx.supabase
           .from('claims')
-          .select('id, job_number, client_reference, status, instruction, date_of_loss, time_of_loss, type_of_loss, accident_description, claims_handler_name, claims_handler_contact, claims_handler_email, province_id, created_at, created_by_employee_id, updated_by_employee_id, clients(name), vehicles(make, model, registration_number)');
+          .select('id, job_number, client_reference, status, instruction, date_of_loss, time_of_loss, type_of_loss, accident_description, claims_handler_name, claims_handler_contact, claims_handler_email, province_id, created_at, created_by_employee_id, updated_by_employee_id, inspection_datetime, clients(name), vehicles(make, model, registration_number)');
 
         if (error) {
           throw new Error(`Failed to fetch claims: ${error.message}`);
@@ -223,24 +318,25 @@ export const claimRouter = createTRPCRouter({
         // Start building the query
         let query = ctx.supabase
           .from('claims')
-          .select('id, job_number, client_reference, status, instruction, date_of_loss, time_of_loss, type_of_loss, accident_description, claims_handler_name, claims_handler_contact, claims_handler_email, province_id, created_at, created_by_employee_id, updated_by_employee_id, clients(name), vehicles(make, model, registration_number)', { count: 'exact' });
+          .select('id, job_number, client_reference, status, instruction, date_of_loss, time_of_loss, type_of_loss, accident_description, claims_handler_name, claims_handler_contact, claims_handler_email, province_id, created_at, created_by_employee_id, updated_by_employee_id, inspection_datetime, clients(name), vehicles(make, model, registration_number)', { count: 'exact' });
 
         // Apply status filters based on the filter parameter
         switch (input.filter) {
           case 'active':
-            query = query.in('status', [ClaimStatus.NEW, ClaimStatus.APPOINTED, ClaimStatus.INSPECTION_DONE, ClaimStatus.REPORT_SENT, ClaimStatus.AUTHORIZED]);
+            // Use or() to include both the status filter and handle null status
+            query = query.or(`status.in.(${ClaimStatus.NEW},${ClaimStatus.APPOINTED},${ClaimStatus.IN_PROGRESS},${ClaimStatus.REPORT_SENT},${ClaimStatus.AUTHORIZED})`);
             break;
           case 'additionals':
             query = query.eq('has_pending_additionals', true);
             break;
           case 'frc':
-            query = query.in('status', [ClaimStatus.FRC_REQUESTED, ClaimStatus.FRC_ACTIVE]);
+            query = query.or(`status.in.(${ClaimStatus.FRC_REQUESTED},${ClaimStatus.FRC_ACTIVE})`);
             break;
           case 'finalized':
             query = query.eq('status', ClaimStatus.FRC_FINALIZED);
             break;
           case 'history':
-            query = query.in('status', [ClaimStatus.FRC_FINALIZED, ClaimStatus.CANCELED]);
+            query = query.or(`status.in.(${ClaimStatus.FRC_FINALIZED},${ClaimStatus.CANCELED})`);
             break;
         }
 
@@ -310,7 +406,7 @@ export const claimRouter = createTRPCRouter({
       try {
         const { data, error } = await ctx.supabase
           .from('claims')
-          .select('id, job_number, client_reference, status, instruction, date_of_loss, time_of_loss, type_of_loss, accident_description, claims_handler_name, claims_handler_contact, claims_handler_email, province_id, created_at, created_by_employee_id, updated_by_employee_id, clients(name), vehicles(make, model, registration_number)')
+          .select('id, job_number, client_reference, status, instruction, date_of_loss, time_of_loss, type_of_loss, accident_description, claims_handler_name, claims_handler_contact, claims_handler_email, province_id, created_at, created_by_employee_id, updated_by_employee_id, inspection_datetime, clients(name), vehicles(make, model, registration_number)')
           .eq('id', input.id)
           .single();
 
@@ -340,7 +436,7 @@ export const claimRouter = createTRPCRouter({
         const { data: activeData, error: activeError } = await ctx.supabase
           .from('claims')
           .select('status', { count: 'exact' })
-          .in('status', [ClaimStatus.NEW, ClaimStatus.APPOINTED, ClaimStatus.INSPECTION_DONE, ClaimStatus.REPORT_SENT, ClaimStatus.AUTHORIZED]);
+          .or(`status.in.(${ClaimStatus.NEW},${ClaimStatus.APPOINTED},${ClaimStatus.IN_PROGRESS},${ClaimStatus.REPORT_SENT},${ClaimStatus.AUTHORIZED})`);
 
         const { data: additionalsData, error: additionalsError } = await ctx.supabase
           .from('claims')
@@ -350,7 +446,7 @@ export const claimRouter = createTRPCRouter({
         const { data: frcData, error: frcError } = await ctx.supabase
           .from('claims')
           .select('status', { count: 'exact' })
-          .in('status', [ClaimStatus.FRC_REQUESTED, ClaimStatus.FRC_ACTIVE]);
+          .or(`status.in.(${ClaimStatus.FRC_REQUESTED},${ClaimStatus.FRC_ACTIVE})`);
 
         const { data: finalizedData, error: finalizedError } = await ctx.supabase
           .from('claims')
@@ -360,7 +456,7 @@ export const claimRouter = createTRPCRouter({
         const { data: historyData, error: historyError } = await ctx.supabase
           .from('claims')
           .select('status', { count: 'exact' })
-          .in('status', [ClaimStatus.FRC_FINALIZED, ClaimStatus.CANCELED]);
+          .or(`status.in.(${ClaimStatus.FRC_FINALIZED},${ClaimStatus.CANCELED})`);
 
         if (activeError || additionalsError || frcError || finalizedError || historyError) {
           throw new Error('Failed to fetch claim counts');
@@ -409,7 +505,7 @@ export const claimRouter = createTRPCRouter({
             created_by_employee_id: ctx.user.id, // Add audit trail
             // Note: job_number is auto-generated by a database trigger
           }])
-          .select('id, job_number, client_reference, status, instruction, date_of_loss, time_of_loss, type_of_loss, accident_description, claims_handler_name, claims_handler_contact, claims_handler_email, province_id, created_at, created_by_employee_id, updated_by_employee_id, clients(name), vehicles(make, model, registration_number)')
+          .select('id, job_number, client_reference, status, instruction, date_of_loss, time_of_loss, type_of_loss, accident_description, claims_handler_name, claims_handler_contact, claims_handler_email, province_id, created_at, created_by_employee_id, updated_by_employee_id, inspection_datetime, clients(name), vehicles(make, model, registration_number)')
           .single();
 
         if (error) {
@@ -466,7 +562,7 @@ export const claimRouter = createTRPCRouter({
           .from('claims')
           .update(dataWithAudit)
           .eq('id', id)
-          .select('id, job_number, client_reference, status, instruction, date_of_loss, time_of_loss, type_of_loss, accident_description, claims_handler_name, claims_handler_contact, claims_handler_email, province_id, created_at, created_by_employee_id, updated_by_employee_id, clients(name), vehicles(make, model, registration_number)')
+          .select('id, job_number, client_reference, status, instruction, date_of_loss, time_of_loss, type_of_loss, accident_description, claims_handler_name, claims_handler_contact, claims_handler_email, province_id, created_at, created_by_employee_id, updated_by_employee_id, inspection_datetime, clients(name), vehicles(make, model, registration_number)')
           .single();
 
         if (error) {
@@ -518,7 +614,7 @@ export const claimRouter = createTRPCRouter({
             updated_by_employee_id: ctx.user.id
           })
           .eq('id', id)
-          .select('id, job_number, client_reference, status, instruction, date_of_loss, time_of_loss, type_of_loss, accident_description, claims_handler_name, claims_handler_contact, claims_handler_email, province_id, created_at, created_by_employee_id, updated_by_employee_id, clients(name), vehicles(make, model, registration_number)')
+          .select('id, job_number, client_reference, status, instruction, date_of_loss, time_of_loss, type_of_loss, accident_description, claims_handler_name, claims_handler_contact, claims_handler_email, province_id, created_at, created_by_employee_id, updated_by_employee_id, inspection_datetime, clients(name), vehicles(make, model, registration_number)')
           .single();
 
         if (error) {
@@ -654,6 +750,7 @@ export const claimRouter = createTRPCRouter({
             date_of_loss, time_of_loss, type_of_loss, accident_description,
             claims_handler_name, claims_handler_contact, claims_handler_email,
             province_id, created_at, created_by_employee_id, updated_by_employee_id, assigned_employee_id,
+            inspection_datetime,
             clients(name),
             vehicles(make, model, registration_number, owner_name, owner_contact),
             appointments(id, appointment_datetime, appointment_status, appointment_duration_minutes,
@@ -733,6 +830,7 @@ export const claimRouter = createTRPCRouter({
           loss_adjuster: lossAdjuster,
           insured_name: data.vehicles?.owner_name || null,
           insured_contact: data.vehicles?.owner_contact || null,
+          inspection_datetime: data.inspection_datetime || null,
           appointments: appointments,
           latest_appointment: latestAppointment
         };
