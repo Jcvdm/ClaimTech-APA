@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Calendar } from '@/components/ui/calendar';
 import { format, parse } from 'date-fns';
-import { CalendarIcon, Clock } from 'lucide-react';
+import { CalendarIcon, Clock, MapPin } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import {
@@ -20,6 +20,8 @@ import {
   type Appointment,
   LocationTypeOptions
 } from '@/lib/api/domains/appointments';
+import { api } from '@/trpc/react';
+import { EnhancedSelect } from "@/components/ui/enhanced-select";
 import {
   Form,
   FormControl,
@@ -121,6 +123,15 @@ export function AppointmentForm({ claim, appointment, mode = 'create', onSuccess
     resolver: zodResolver(appointmentFormSchema),
     defaultValues,
   });
+
+  // Log the default values for debugging
+  console.log('[AppointmentForm] Default values:', defaultValues);
+
+  // Convert LocationTypeOptions to the format expected by EnhancedSelect
+  const enhancedLocationTypeOptions = LocationTypeOptions.map(option => ({
+    id: option.value,
+    name: option.label
+  }));
 
   // Reset form when appointment changes (for edit mode)
   useEffect(() => {
@@ -365,33 +376,26 @@ export function AppointmentForm({ claim, appointment, mode = 'create', onSuccess
                 control={form.control}
                 name="location_type"
                 render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Location Type</FormLabel>
-                    <Select
-                      onValueChange={field.onChange}
-                      defaultValue={field.value}
+                  <>
+                    <EnhancedSelect
+                      name="location_type"
+                      label="Location Type"
+                      control={form.control}
+                      options={enhancedLocationTypeOptions}
                       disabled={isSubmitting}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select location type" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {LocationTypeOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormDescription>
+                      onValueChange={(value) => {
+                        console.log(`[AppointmentForm] Location type changed to: ${value}`);
+                      }}
+                    />
+                    <FormDescription className="mt-1">
                       Type of location for the appointment
                     </FormDescription>
-                    <FormMessage />
-                  </FormItem>
+                  </>
                 )}
               />
+
+              {/* Province Field (Read-only) */}
+              <ProvinceDisplay provinceId={claim?.province_id} />
 
               {/* Location Address Field */}
               <FormField
@@ -504,5 +508,41 @@ export function AppointmentForm({ claim, appointment, mode = 'create', onSuccess
         </Form>
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Component to display province information in a read-only field
+ */
+function ProvinceDisplay({ provinceId }: { provinceId: string | null | undefined }) {
+  // Fetch provinces data
+  const { data: provinces, isLoading } = api.lookup.getProvinces.useQuery(undefined, {
+    staleTime: Infinity,
+    retry: 2,
+  });
+
+  // Find the province name that matches the provinceId
+  const provinceName = React.useMemo(() => {
+    if (!provinceId || !provinces || provinces.length === 0) return 'Not specified';
+
+    const province = provinces.find(p => p.id === provinceId);
+    return province ? province.name : 'Not specified';
+  }, [provinceId, provinces]);
+
+  return (
+    <FormItem>
+      <FormLabel>Province</FormLabel>
+      <div className="flex items-center">
+        <MapPin className="mr-2 h-4 w-4 text-muted-foreground" />
+        <Input
+          value={isLoading ? 'Loading province...' : provinceName}
+          disabled
+          className="bg-muted/50"
+        />
+      </div>
+      <FormDescription>
+        Province from the claim (read-only)
+      </FormDescription>
+    </FormItem>
   );
 }

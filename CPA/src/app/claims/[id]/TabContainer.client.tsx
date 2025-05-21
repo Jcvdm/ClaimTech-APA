@@ -30,7 +30,6 @@ interface TabContainerProps {
     overview: React.ReactNode;
     appointment: React.ReactNode;
     inspection: React.ReactNode;
-    threesixty: React.ReactNode;
     estimate: React.ReactNode;
     preincident: React.ReactNode;
   };
@@ -154,7 +153,7 @@ export default function TabContainer({ id, tabContents, initialData }: TabContai
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const tabParam = searchParams.get('tab');
-  const validTabs = ['overview', 'appointment', 'inspection', 'threesixty', 'estimate', 'preincident'];
+  const validTabs = ['overview', 'appointment', 'inspection', 'estimate', 'preincident'];
   const [activeTab, setActiveTab] = useState(
     tabParam && validTabs.includes(tabParam) ? tabParam : 'overview'
   );
@@ -323,7 +322,7 @@ export default function TabContainer({ id, tabContents, initialData }: TabContai
         )}
 
         <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
-          <TabsList className="grid w-full grid-cols-6">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="overview" disabled={loadingTab !== null}>
               {loadingTab === 'overview' ? (
                 <div className="flex items-center">
@@ -352,16 +351,6 @@ export default function TabContainer({ id, tabContents, initialData }: TabContai
                 </div>
               ) : (
                 'Inspection'
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="threesixty" disabled={loadingTab !== null}>
-              {loadingTab === 'threesixty' ? (
-                <div className="flex items-center">
-                  <Loader2 className="mr-2 h-3 w-3 animate-spin" />
-                  360°
-                </div>
-              ) : (
-                '360°'
               )}
             </TabsTrigger>
             <TabsTrigger value="estimate" disabled={loadingTab !== null}>
@@ -400,10 +389,6 @@ export default function TabContainer({ id, tabContents, initialData }: TabContai
 
           <TabsContent value="inspection" className="space-y-4">
             {loadingTab === 'inspection' ? <TabLoadingSkeleton /> : tabContents.inspection}
-          </TabsContent>
-
-          <TabsContent value="threesixty" className="space-y-4">
-            {loadingTab === 'threesixty' ? <TabLoadingSkeleton /> : tabContents.threesixty}
           </TabsContent>
 
           <TabsContent value="estimate" className="space-y-4">

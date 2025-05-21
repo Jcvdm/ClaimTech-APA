@@ -77,18 +77,27 @@ export const formSchema = z.object({
   if (!data.registration_number && !data.vin && !data.engine_number) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message: "At least one identifier (Registration Number, VIN, or Engine Number) is required",
+      message: "At least one vehicle identifier is required. Please provide Registration Number, VIN, or Engine Number.",
       path: ["registration_number"],
     });
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message: "At least one identifier is required",
+      message: "At least one vehicle identifier is required. Please provide Registration Number, VIN, or Engine Number.",
       path: ["vin"],
     });
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message: "At least one identifier is required",
+      message: "At least one vehicle identifier is required. Please provide Registration Number, VIN, or Engine Number.",
       path: ["engine_number"],
+    });
+  }
+
+  // Validate date of loss is not in the future
+  if (data.date_of_loss && data.date_of_loss > new Date()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Date of loss cannot be in the future",
+      path: ["date_of_loss"],
     });
   }
 });
@@ -132,13 +141,14 @@ export const defaultFormValues: Partial<FormValues> = {
   registration_number: "",
   vin: "",
   engine_number: "",
-  transmission_type: "",
-  drive_type: "",
-  fuel_type: "",
+  // Fields below will be captured during vehicle inspection
+  transmission_type: undefined,
+  drive_type: undefined,
+  fuel_type: undefined,
   license_disk_expiry: undefined,
-  license_disk_present: false,
-  has_lettering: false,
-  has_trim_mouldings: false,
+  license_disk_present: undefined,
+  has_lettering: undefined,
+  has_trim_mouldings: undefined,
 
   // Location Details Tab
   claim_location: "",

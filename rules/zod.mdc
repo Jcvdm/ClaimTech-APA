@@ -1,0 +1,129 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+ # Zod Guidelines
+
+## Purpose
+Type-safe schema declaration and validation. Integrates seamlessly with TypeScript, tRPC, and React Hook Form (`@hookform/resolvers/zod`). Essential for ensuring data integrity and type safety end-to-end.
+
+## Key Concepts & Usage
+
+*   **Schema Definition:** Define data shapes using `z.object`, `z.string`, `z.number`, etc.
+*   **Validation Methods:** Apply constraints like `.min()`, `.max()`, `.email()`, `.optional()`, `.nullable()`.
+*   **Parsing:**
+    *   `.parse(data)`: Validates data, throws `ZodError` on failure.
+    *   `.safeParse(data)`: Validates data, returns `{ success: true, data: ... }` or `{ success: false, error: ZodError }`.
+*   **Type Inference:** Use `z.infer<typeof mySchema>` to get the TypeScript type.
+*   **Error Handling:**
+    *   Catch `ZodError` from `.parse()`.
+    *   Check `result.success` from `.safeParse()`.
+    *   Use `error.flatten()` or `error.format()` for UI-friendly error structures.
+    *   Use `zod-validation-error` library for more user-friendly message generation from `ZodError`.
+*   **Integration:**
+    *   tRPC: Use Zod schemas for input validation in procedures.
+    *   React Hook Form: Use `@hookform/resolvers/zod` to connect schemas to forms.
+
+## Examples
+
+### Basic Object Schema
+```typescript
+import { z } from 'zod';
+
+export const UserSchema = z.object({
+  id: z.string().uuid(),
+  username: z.string().min(3, "Username must be at least 3 characters"),
+  email: z.string().email(),
+  isAdmin: z.boolean().default(false),
+  createdAt: z.date().optional(),
+});
+
+export type User = z.infer<typeof UserSchema>;
+```
+
+### Parsing Data
+```typescript
+import { UserSchema } from './schemas';
+
+const userData = {
+  id: 'some-uuid', // Invalid UUID
+  username: 'Al',
+  email: 'invalid-email',
+};
+
+// Using parse (throws error)
+try {
+  const user = UserSchema.parse(userData);
+  console.log('Valid user:', user);
+} catch (error) {
+  if (error instanceof z.ZodError) {
+    console.error("Validation failed:", error.flatten());
+    // Example using zod-validation-error:
+    // import { fromZodError } from 'zod-validation-error';
+    // const validationError = fromZodError(error);
+    // console.error('User-friendly error:', validationError.toString());
+  }
+}
+
+// Using safeParse (returns result object)
+const result = UserSchema.safeParse(userData);
+if (!result.success) {
+  console.error("SafeParse failed:", result.error.format());
+  // Example using zod-validation-error:
+  // import { fromZodError } from 'zod-validation-error';
+  // const validationError = fromZodError(result.error);
+  // console.error('User-friendly error:', validationError.toString());
+} else {
+  console.log('SafeParse success:', result.data);
+}
+```
+
+### Usage with React Hook Form
+```typescript
+// src/components/forms/ProfileForm.tsx
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+
+const ProfileSchema = z.object({
+  username: z.string().min(3),
+  email: z.string().email(),
+});
+
+type ProfileFormData = z.infer<typeof ProfileSchema>;
+
+export function ProfileForm() {
+  const { register, handleSubmit, formState: { errors } } = useForm<ProfileFormData>({
+    resolver: zodResolver(ProfileSchema),
+  });
+
+  const onSubmit = (data: ProfileFormData) => {
+    console.log('Form submitted:', data);
+    // Call tRPC mutation, etc.
+  };
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)}>
+      <div>
+        <label htmlFor="username">Username</label>
+        <input id="username" {...register('username')} />
+        {errors.username && <p className="text-red-500">{errors.username.message}</p>}
+      </div>
+      <div>
+        <label htmlFor="email">Email</label>
+        <input id="email" type="email" {...register('email')} />
+        {errors.email && <p className="text-red-500">{errors.email.message}</p>}
+      </div>
+      <button type="submit">Update Profile</button>
+    </form>
+  );
+}
+```
+
+### Custom Error Messages
+```typescript
+z.string({ required_error: "Field is required" })
+  .min(5, { message: "Must be 5 or more characters" })
+  .email({ message: "Please enter a valid email address" });
+```

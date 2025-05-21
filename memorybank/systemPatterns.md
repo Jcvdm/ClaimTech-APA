@@ -48,9 +48,10 @@
     *   **Validation:** Data is validated using Zod at the API boundary (tRPC input) and within DAL type definitions.
 *   **State Management:**
     *   **Server State:** Managed by **TanStack Query**, accessed either directly through tRPC hooks or via the DAL.
-    *   **Global Client State:** Managed by **Zustand**, primarily for authentication status (`useAuthStore`). Initialization and synchronization handled by `AuthProvider`.
+    *   **Global Client State:** Managed by **Zustand**, primarily for authentication status (`useAuthStore`) and synchronization status (`useSyncStatusStore`). Initialization and synchronization handled by `AuthProvider`.
     *   **Local UI State:** Managed by React's built-in hooks (`useState`, `useEffect`) within individual components.
     *   **Form State:** Managed by **React Hook Form** (`useForm`) within specific form components.
+    *   **Sync Status:** Managed by a dedicated Zustand store (`useSyncStatusStore`) that tracks global synchronization status for optimistic UI updates.
 *   **Optimistic Updates:**
     *   Implemented within specific DAL mutation hooks (e.g., `useOptimisticUpdateClaimStatus`, `useOptimisticDeleteClaim`) using TanStack Query's `useMutation` options (`onMutate`, `onError`, `onSettled`).
 *   **Component Strategy:**
@@ -145,6 +146,33 @@ graph TD
 *   **Sidebar Content:** Updated to reflect workflow steps (Claims, Additionals, FRC, Finalized, History, Clients, Repairers). Includes badges for counts fetched via DAL hooks.
 *   **Responsiveness:** The sidebar supports both expanded and collapsed states via the Shadcn UI `Sidebar` component's functionality. Mobile responsiveness is handled through the sidebar component's built-in behavior.
 
+## Logging System Architecture
+
+### Database Structure
+- **Table**: `claim_logs` with columns for `id`, `claim_id`, `user_id`, `log_type`, `message`, `details`, and `created_at`
+- **Indexes**: Created on `claim_id`, `created_at`, and `log_type` for efficient querying
+- **RLS Policies**: Configured to allow authenticated users to select and insert logs
+
+### Log Types
+- **Claim Events**: `CLAIM_CREATED`, `CLAIM_UPDATED`, `CLAIM_STATUS_CHANGED`
+- **Appointment Events**: `APPOINTMENT_CREATED`, `APPOINTMENT_UPDATED`, `APPOINTMENT_CANCELED`, `APPOINTMENT_RESCHEDULED`
+- **Inspection Events**: `INSPECTION_STARTED`, `INSPECTION_COMPLETED`
+- **Estimate Events**: `ESTIMATE_CREATED`, `ESTIMATE_UPDATED`
+- **Additional Events**: `ADDITIONAL_CREATED`, `ADDITIONAL_APPROVED`, `ADDITIONAL_REJECTED`
+- **Manual Logs**: `MANUAL_LOG` for user-added notes
+
+### Integration Points
+- **Claim Creation**: Logs created automatically when a claim is created
+- **Status Changes**: Logs created when claim status is updated
+- **Appointments**: Logs created when appointments are created, updated, or rescheduled
+- **Inspections**: Logs created when inspections are started or completed
+- **Manual Entry**: UI component allows users to add manual notes to the log
+
+### UI Components
+- **LogsCard**: Main component that displays logs and allows adding manual entries
+- **LogEntry**: Component for rendering individual log entries with appropriate formatting
+- **Placement**: Integrated into the Overview tab of claim details
+
 ## Data Fetching Architecture
 
 ### Prefetching System
@@ -177,13 +205,12 @@ graph TD
 - **Layout**: Consistent layout with title, card, and content sections
 
 ### Tab Components
-1. **SummaryTab**: Overview of claim details
+1. **SummaryTab**: Overview of claim details and activity logs
 2. **AppointmentTab**: Appointment scheduling and tracking
-3. **InspectionTab**: Vehicle inspection details (placeholder)
-4. **ThreeSixtyTab**: 360° image viewer (placeholder)
-5. **EstimateTab**: Repair cost estimates (placeholder)
-6. **PreIncidentTab**: Pre-incident condition reporting (placeholder)
-7. **HistoryTab**: Claim history and activity log
+3. **InspectionTab**: Vehicle inspection details with integrated 360° view
+4. **EstimateTab**: Repair cost estimates with form for creating estimates
+5. **PreIncidentTab**: Pre-incident condition reporting (placeholder)
+6. **HistoryTab**: Claim history (placeholder, logs moved to Overview tab)
 
 ### Tab Component Pattern
 ```tsx
@@ -199,6 +226,211 @@ export function TabNameTab({ claim }: TabNameTabProps) {
           {/* Tab-specific content */}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+```
+
+## Estimate Form Architecture
+
+### Core Components
+1. **EstimateForm**: Main component for creating new estimates
+   - Handles form state with React Hook Form
+   - Uses Shadcn UI form components
+   - Implements proper validation and error handling
+   - Formats currency values with decimal places
+   - Removes increment/decrement arrows from numeric inputs
+   - Adjusts field sizes based on content type
+
+2. **EstimateSummary**: Component for displaying estimate details
+   - Shows rates, markups, and cost breakdown
+   - Formats numbers with proper decimal places
+   - Handles null values gracefully
+   - Provides clear visual organization of estimate data
+
+3. **EstimateLineForm**: Component for adding estimate line items
+   - Supports different process types (New, Repair, etc.)
+   - Includes fields for parts, labor, paint, and other costs
+   - Implements proper validation and error handling
+
+### Estimate Form Pattern
+```tsx
+// EstimateForm - Component for creating new estimates
+export function EstimateForm({ claimId, onCancel }: EstimateFormProps) {
+  const createEstimate = useCreateEstimate();
+
+  const form = useForm<EstimateCreate>({
+    resolver: zodResolver(EstimateCreateSchema),
+    defaultValues: {
+      claim_id: claimId,
+      vat_rate_percentage: 15,
+      panel_labor_rate: 350.00, // Single labor rate for all labor types
+      paint_material_rate: 2000.00, // Per panel rate (no markup)
+      special_markup_percentage: 25, // Special services markup
+      part_markup_percentage: 25, // Markup only on parts
+    },
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Create Estimate</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Form fields with proper formatting and validation */}
+              <FormField
+                control={form.control}
+                name="panel_labor_rate"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Labor Rate (per hour)</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="text"
+                        inputMode="decimal"
+                        className="text-right"
+                        value={field.value.toFixed(2)}
+                        onChange={(e) => {
+                          const value = e.target.value.replace(/[^0-9.]/g, '');
+                          field.onChange(parseFloat(value) || 0);
+                        }}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              {/* Additional form fields */}
+            </div>
+            {/* Submit buttons */}
+          </form>
+        </Form>
+      </CardContent>
+    </Card>
+  );
+}
+```
+
+## Photo Component Architecture
+
+### Core Components
+1. **StorageImage**: Base component for displaying images from Supabase Storage
+   - Handles URL generation and caching
+   - Supports various display options (width, height, objectFit)
+   - Implements forwardRef for DOM access
+
+2. **ImagePreview**: Enhanced modal for viewing and interacting with images
+   - Window-like resizing with react-rnd
+   - Zoom and pan capabilities
+   - Aspect ratio preservation
+   - Session state persistence
+   - Implements mount state tracking to prevent auto-opening
+   - Uses unique keys to isolate component instances
+
+3. **ImagePreviewWrapper**: Wrapper component for ImagePreview
+   - Ensures proper isolation of dialog state
+   - Forces React to create new instances when filePath changes
+   - Prevents issues with automatic dialog opening
+
+4. **PhotoUploadCard**: Component for uploading and displaying photos
+   - Drag-and-drop functionality
+   - Preview capability
+   - Delete and download options
+   - Uses ImagePreviewWrapper to prevent dialog state issues
+
+### Photo Component Pattern
+```tsx
+// StorageImage - Base component for displaying images
+export const StorageImage = forwardRef<HTMLImageElement, StorageImageProps>(({
+  bucketName = "claim-attachments",
+  filePath,
+  alt,
+  ...props
+}, ref) => {
+  // Image URL generation and rendering logic
+});
+
+// ImagePreview - Enhanced modal for viewing images
+export function ImagePreview({ bucketName, filePath, alt, children }: ImagePreviewProps) {
+  // Track component mount state to prevent auto-opening
+  const [isMounted, setIsMounted] = useState(false);
+
+  // State for size, position, zoom, pan
+  const [isOpen, setIsOpen] = useState(false);
+
+  // Set mounted state on component mount
+  useEffect(() => {
+    setIsMounted(true);
+    return () => setIsMounted(false);
+  }, []);
+
+  // Reset dialog state when filePath changes
+  useEffect(() => {
+    if (isMounted) {
+      setIsOpen(false);
+    }
+  }, [filePath, isMounted]);
+
+  return (
+    <Dialog
+      key={`dialog-${filePath}`}
+      open={isMounted ? isOpen : false}
+      onOpenChange={(open) => {
+        if (isMounted) {
+          setIsOpen(open);
+        }
+      }}
+    >
+      <DialogTrigger>{children}</DialogTrigger>
+      <Rnd
+        size={size}
+        position={position}
+        lockAspectRatio={aspectRatio}
+        // Other configuration
+      >
+        {/* Image and controls */}
+      </Rnd>
+    </Dialog>
+  );
+}
+
+// ImagePreviewWrapper - Wrapper to isolate dialog state
+export function ImagePreviewWrapper({ bucketName, filePath, alt, children }: ImagePreviewWrapperProps) {
+  // Generate a unique key based on the filePath
+  const instanceKey = `image-preview-${filePath}`;
+
+  return (
+    <ImagePreview
+      key={instanceKey}
+      bucketName={bucketName}
+      filePath={filePath}
+      alt={alt}
+    >
+      {children}
+    </ImagePreview>
+  );
+}
+
+// PhotoUploadCard - Component for uploading and displaying photos
+export function PhotoUploadCard({
+  title,
+  imagePath,
+  onImagePathChange,
+  ...props
+}: PhotoUploadCardProps) {
+  // Upload, delete, and download functionality
+  return (
+    <div>
+      {imagePath ? (
+        <ImagePreview>
+          <StorageImage />
+        </ImagePreview>
+      ) : (
+        <DropzoneArea />
+      )}
     </div>
   );
 }

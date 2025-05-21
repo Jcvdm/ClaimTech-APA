@@ -8,7 +8,7 @@
 - **UI Library**: React 19
 - **Styling**: Tailwind CSS
 - **Component Library**: Shadcn UI
-- **State Management**: TanStack Query (React Query)
+- **State Management**: TanStack Query (React Query), Zustand for global state
 - **Form Handling**: React Hook Form
 - **Validation**: Zod
 - **API Client**: tRPC
@@ -17,7 +17,7 @@
 - **API Layer**: tRPC
 - **Database**: PostgreSQL (via Supabase)
 - **Authentication**: Supabase Auth
-- **Storage**: Supabase Storage
+- **Storage**: Supabase Storage (with claim-attachments bucket)
 - **Serverless Functions**: Edge Functions (Supabase)
 
 ## Development Environment
@@ -61,6 +61,13 @@
 - Use TanStack Query for client-side data fetching and caching
 
 ## Key Patterns
+
+### Optimistic UI Updates
+- Immediate local state updates for responsive UI
+- Background server synchronization
+- Global synchronization status indicator
+- Error handling with toast notifications
+- Zustand store for tracking sync operations
 
 ### Server-Side Rendering
 - Server components fetch data and render HTML
@@ -106,13 +113,21 @@
 - **attachments**: Documents and files related to claims
 - **provinces**: Reference data for provinces
 - **employees**: Employee information
+- **claim_logs**: Logs of claim-related events
 
 ### Important Relationships
 - Claims have one Vehicle
 - Claims have one Client
 - Claims have many Appointments
 - Claims have many Attachments
+- Claims have many Logs
 - Claims can be assigned to Employees
+
+### Type Safety
+- Custom PostgreSQL enum types for status, instruction, and type_of_loss fields
+- Proper type casting in database functions
+- Validation and error handling for enum and time type fields
+- Zod schemas for input and output validation
 
 ## API Structure
 

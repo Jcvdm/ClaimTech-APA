@@ -1,0 +1,96 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Biome Guidelines
+
+## Purpose
+Fast and unified toolchain for linting, formatting, and more for JavaScript, TypeScript, JSX, and JSON. Replaces ESLint and Prettier for consistency and performance.
+
+## Key Concepts & Usage
+
+*   **Unified Tool:** Combines formatting and linting in one tool.
+*   **Configuration:** Configure via `biome.json` in the project root.
+*   **CLI Usage:**
+    *   `npx @biomejs/biome format --write .`: Format files.
+    *   `npx @biomejs/biome lint --apply .`: Lint and apply safe fixes.
+    *   `npx @biomejs/biome check --apply .`: Run format and lint with safe fixes.
+    *   `npx @biomejs/biome ci .`: Check all files (for CI environments).
+*   **Integration:** Use the Biome VS Code extension for real-time feedback and formatting on save.
+*   **Rules:** Configure specific lint rules or use recommended sets in `biome.json`.
+
+## Examples
+
+### Basic `biome.json` Configuration
+```json
+{
+  "$schema": "https://biomejs.dev/schemas/1.6.1/schema.json",
+  "organizeImports": {
+    "enabled": true
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true
+    }
+  },
+  "formatter": {
+    "enabled": true,
+    "formatWithErrors": false,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 80
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "jsxQuoteStyle": "double",
+      "quoteProperties": "asNeeded",
+      "trailingComma": "all",
+      "semicolons": "always"
+    }
+  }
+}
+```
+
+### Running Biome Check with Auto-Fix
+```shell
+npx @biomejs/biome check --apply .
+# Alternatively, use --write which is an alias for --apply
+npx @biomejs/biome check --write .
+```
+
+### Running Formatter Only
+```shell
+npx @biomejs/biome format --write .
+```
+
+### Running Linter Only (with safe fixes)
+```shell
+npx @biomejs/biome lint --apply .
+```
+
+### Ignoring Files
+```json
+// biome.json
+{
+  // ... other config
+  "files": {
+    "ignore": [
+      "node_modules",
+      ".next",
+      "dist",
+      "*.generated.ts"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "ignore": ["src/legacy/**"] // Formatter-specific ignores
+  },
+  "linter": {
+    "enabled": true,
+    "ignore": ["src/generated/**"] // Linter-specific ignores
+  }
+}
+``` 

@@ -1,0 +1,138 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Sonner Toast Guidelines
+
+## Purpose
+Simple, lightweight toast notification library that integrates well with React/Tailwind/Shadcn aesthetics. Used for user feedback (e.g., success/error messages from form submissions or data fetching).
+
+## Key Concepts & Usage
+
+*   **Provider:** Add the `<Toaster />` component once in your root layout (`app/layout.tsx`).
+*   **Triggering Toasts:** Import `toast` from `sonner` and call functions like `toast('Message')`, `toast.success('Success!')`, `toast.error('Failed!')`, `toast.loading('Working...')`, `toast.promise(promise, { ... })`.
+*   **Customization:**
+    *   Global: Pass `toastOptions` to `<Toaster />` (e.g., for classNames, style, icons).
+    *   Individual: Pass options object as the second argument to `toast()` calls (e.g., `duration`, `description`, `action`, `cancel`, `icon`).
+    *   Styling: Use `classNames` prop (globally or individually) with Tailwind classes for fine-grained control. Can also use `unstyled={true}` for complete custom styling.
+*   **Positioning:** Set the `position` prop on `<Toaster />` (default: `bottom-right`).
+*   **Integration:** Trigger toasts from TanStack Query `onSuccess`/`onError` callbacks or form submission handlers.
+
+## Examples
+
+### Setup in Root Layout
+```tsx
+// app/layout.tsx
+import { Toaster } from 'sonner';
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body>
+        {children}
+        {/* Configure Toaster position, theme, etc. here */}
+        <Toaster position="top-center" richColors />
+      </body>
+    </html>
+  );
+}
+```
+
+### Basic Toast
+```typescript
+import { toast } from 'sonner';
+
+// Somewhere in a component or hook
+function handleClick() {
+  toast('Event has been created');
+}
+```
+
+### Success/Error Toasts
+```typescript
+import { toast } from 'sonner';
+
+function handleSuccess() {
+  toast.success('Profile updated successfully!');
+}
+
+function handleError(errorMessage: string) {
+  toast.error(`Update failed: ${errorMessage}`);
+}
+```
+
+### Promise Toast (e.g., with tRPC mutation)
+```typescript
+import { toast } from 'sonner';
+import { api } from '@/utils/api'; // Example tRPC client
+
+function MyComponent() {
+  const mutation = api.post.create.useMutation();
+
+  const handleSubmit = async () => {
+    const promise = mutation.mutateAsync({ title: 'New Post' });
+
+    toast.promise(promise, {
+      loading: 'Creating post...',
+      success: (data) => {
+        // 'data' is the result of the mutation
+        return `Post "${data.title}" created successfully!`;
+      },
+      error: (err) => {
+        // 'err' is the error from the mutation
+        return `Failed to create post: ${err.message}`;
+      },
+    });
+  };
+
+  return <button onClick={handleSubmit}>Create Post</button>;
+}
+```
+
+### Toast with Action
+```typescript
+import { toast } from 'sonner';
+
+function showActionToast() {
+  toast('Item added to cart', {
+    action: {
+      label: 'Undo',
+      onClick: () => console.log('Undo action triggered'),
+    },
+    description: 'You can undo this action.',
+    duration: 5000,
+  });
+}
+```
+
+### Custom Styling with Tailwind (Global)
+```tsx
+// app/layout.tsx
+import { Toaster } from 'sonner';
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body>
+        {children}
+        <Toaster
+          toastOptions={{
+            // Use Tailwind classes for different toast parts
+            classNames: {
+              toast: 'bg-background border border-border shadow-lg rounded-md p-4',
+              title: 'text-foreground font-semibold',
+              description: 'text-muted-foreground',
+              actionButton: 'bg-primary text-primary-foreground',
+              cancelButton: 'bg-secondary text-secondary-foreground',
+              error: 'bg-destructive border-destructive text-destructive-foreground',
+              success: 'bg-green-600 border-green-600 text-white',
+              // ... other types: warning, info, loading
+            },
+          }}
+        />
+      </body>
+    </html>
+  );
+}
+``` 

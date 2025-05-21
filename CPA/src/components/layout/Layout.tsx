@@ -4,6 +4,7 @@ import React from "react";
 import { TopBar } from "./TopBar";
 import { AppSidebar } from "./AppSidebar";
 import dynamic from "next/dynamic";
+import { useClaimCountsRealtime } from "@/lib/api/domains/claims";
 
 const ScrollArea = dynamic(
   () => import("@/components/ui/scroll-area").then((mod) => mod.ScrollArea),
@@ -15,6 +16,9 @@ interface LayoutProps {
 }
 
 export function Layout({ children }: LayoutProps) {
+  // Set up real-time subscription for claim counts
+  // This will update the sidebar badges when claims are created, updated, or deleted
+  useClaimCountsRealtime();
 
   return (
     <div className="h-screen w-full flex bg-background overflow-hidden">

@@ -32,21 +32,25 @@ const ClientListParamsSchema = z.object({
 export const clientRouter = createTRPCRouter({
   // Get all clients
   getAll: publicProcedure
+    .input(z.object({}).optional())
     .output(z.array(ClientOutputSchema))
     .query(async ({ ctx }) => {
+      console.log("[clientRouter] Executing getAll procedure...");
       try {
         const { data, error } = await ctx.supabase
           .from('clients')
           .select('id, name');
 
         if (error) {
-          throw new Error(`Failed to fetch clients: ${error.message}`);
+          console.error("[clientRouter] Error fetching clients:", error);
+          return []; // Return empty array instead of throwing
         }
 
+        console.log(`[clientRouter] Successfully fetched ${data?.length || 0} clients`);
         return ClientOutputSchema.array().parse(data || []);
       } catch (error) {
-        console.error("Error fetching clients:", error);
-        throw error;
+        console.error("[clientRouter] Error fetching clients:", error);
+        return []; // Return empty array instead of throwing
       }
     }),
 

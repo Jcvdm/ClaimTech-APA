@@ -36,7 +36,11 @@ export const claimQueries = {
     apiClient.query<ClaimCountsResponse>(
       () => apiClient.raw.claim.getCounts.useQuery(),
       {
-        refetchInterval: 60000, // Refresh counts every minute
+        refetchInterval: 15000, // Refresh counts every 15 seconds
+        staleTime: 5000, // Consider data stale after 5 seconds
+        gcTime: 60000, // Keep data in cache for 1 minute
+        refetchOnWindowFocus: true, // Refetch when the window regains focus
+        refetchOnMount: true, // Refetch when the component mounts
         ...options
       }
     ),

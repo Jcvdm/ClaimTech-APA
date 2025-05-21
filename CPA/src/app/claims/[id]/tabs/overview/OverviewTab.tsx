@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { type ClaimDetails, type ClaimSummary, ClaimStatus, ClaimInstruction, TypeOfLoss } from "@/lib/api/domains/claims/types";
 import { formatDate } from "@/lib/utils";
+import { LogsCard } from "@/components/logs/LogsCard";
 
 interface OverviewTabProps {
   claimData: {
@@ -12,7 +13,7 @@ interface OverviewTabProps {
 export default function OverviewTab({ claimData }: OverviewTabProps) {
   // Use details if available, otherwise fall back to summary
   const data = claimData.details || claimData.summary;
-  
+
   if (!data) {
     return (
       <div className="space-y-4">
@@ -25,7 +26,7 @@ export default function OverviewTab({ claimData }: OverviewTabProps) {
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-semibold">Claim Overview</h2>
-      
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card>
           <CardHeader className="pb-2">
@@ -68,7 +69,7 @@ export default function OverviewTab({ claimData }: OverviewTabProps) {
             </div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-lg">Client Information</CardTitle>
@@ -103,7 +104,7 @@ export default function OverviewTab({ claimData }: OverviewTabProps) {
           </CardContent>
         </Card>
       </div>
-      
+
       {claimData.details?.accident_description && (
         <Card>
           <CardHeader className="pb-2">
@@ -113,6 +114,11 @@ export default function OverviewTab({ claimData }: OverviewTabProps) {
             <p className="whitespace-pre-wrap">{claimData.details.accident_description}</p>
           </CardContent>
         </Card>
+      )}
+
+      {/* Activity Log */}
+      {data.id && (
+        <LogsCard claimId={data.id} />
       )}
     </div>
   );

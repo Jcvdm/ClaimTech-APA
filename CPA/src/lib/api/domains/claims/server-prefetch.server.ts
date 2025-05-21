@@ -3,6 +3,7 @@ import { cache } from "react";
 import { createServerCaller } from "@/lib/api/utils/createServerCaller";
 import { getQueryClient } from "@/trpc/query-client";
 import { QUERY_KEYS, CACHE_TIMES } from "./constants";
+import { prefetchInspectionsByClaimServer } from "@/lib/api/domains/inspections/server-prefetch.server";
 
 /**
  * Server-side prefetch for a single claim with all related data
@@ -126,6 +127,7 @@ export const prefetchClaimServer = cache(async (id: string) => {
     // Check if we have related data in the cache
     const appointmentsKey = QUERY_KEYS.TRPC.APPOINTMENTS(id);
     const attachmentsKey = QUERY_KEYS.TRPC.ATTACHMENTS(id);
+    const inspectionsKey = ["trpc", "inspection", "getByClaim", { input: { claim_id: id }, type: "query" }];
 
     const cachedAppointments = queryClient.getQueryData(appointmentsKey);
     const appointmentsState = queryClient.getQueryState(appointmentsKey);
@@ -134,6 +136,10 @@ export const prefetchClaimServer = cache(async (id: string) => {
     const cachedAttachments = queryClient.getQueryData(attachmentsKey);
     const attachmentsState = queryClient.getQueryState(attachmentsKey);
     const attachmentsUpdatedAt = attachmentsState?.dataUpdatedAt;
+
+    const cachedInspections = queryClient.getQueryData(inspectionsKey);
+    const inspectionsState = queryClient.getQueryState(inspectionsKey);
+    const inspectionsUpdatedAt = inspectionsState?.dataUpdatedAt;
 
     // Check if vehicle and client data are in cache
     let cachedVehicle = null, cachedClient = null;
@@ -162,6 +168,10 @@ export const prefetchClaimServer = cache(async (id: string) => {
       attachmentsUpdatedAt &&
       (Date.now() - attachmentsUpdatedAt < CACHE_TIMES.STALE_TIME.DETAILS);
 
+    const areInspectionsFresh = cachedInspections &&
+      inspectionsUpdatedAt &&
+      (Date.now() - inspectionsUpdatedAt < CACHE_TIMES.STALE_TIME.DETAILS);
+
     const isVehicleFresh = cachedVehicle &&
       vehicleUpdatedAt &&
       (Date.now() - vehicleUpdatedAt < CACHE_TIMES.STALE_TIME.DETAILS);
@@ -174,6 +184,7 @@ export const prefetchClaimServer = cache(async (id: string) => {
     const [
       appointmentsData,
       attachmentsData,
+      inspectionsData,
       vehicleData,
       clientData,
       provincesData,
@@ -194,6 +205,15 @@ export const prefetchClaimServer = cache(async (id: string) => {
         : caller.attachment.getByClaim({ claim_id: id })
             .catch((error: Error) => {
               console.error(`[Server Prefetch] Error fetching attachments for claim ${id}:`, error);
+              return [];
+            }),
+
+      // Inspections for this claim
+      areInspectionsFresh
+        ? Promise.resolve(cachedInspections)
+        : prefetchInspectionsByClaimServer(id)
+            .catch((error: Error) => {
+              console.error(`[Server Prefetch] Error fetching inspections for claim ${id}:`, error);
               return [];
             }),
 
@@ -270,6 +290,7 @@ export const prefetchClaimServer = cache(async (id: string) => {
       details,
       appointments: appointmentsData,
       attachments: attachmentsData,
+      inspections: inspectionsData,
       vehicle: vehicleData,
       client: clientData,
       provinces: provincesData,
@@ -295,6 +316,7 @@ export const prefetchClaimServer = cache(async (id: string) => {
       details: null,
       appointments: [],
       attachments: [],
+      inspections: [],
       vehicle: null,
       client: null,
       provinces: [],

@@ -1,6 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import { createServerCaller } from "@/lib/api/utils/createServerCaller";
+import { getQueryClient } from "@/lib/api/query-client.server";
 import { type Appointment } from "./index";
 
 /**
@@ -28,6 +29,22 @@ export const prefetchAppointmentsServer = cache(async (claimId: string) => {
 
     if (appointments) {
       console.log(`[Server Prefetch] Successfully prefetched ${appointments.length} appointments for claim ${claimId}`);
+
+      // Set the data in the query client cache with the correct query key
+      const queryClient = getQueryClient();
+
+      // Cache with the client-side query key
+      queryClient.setQueryData(
+        ['appointment', 'getByClaim', { claim_id: claimId }],
+        appointments
+      );
+
+      // Also cache with the tRPC query key for compatibility
+      queryClient.setQueryData(
+        ['appointment.getByClaim', { input: { claim_id: claimId }, type: 'query' }],
+        appointments
+      );
+
       return appointments;
     } else {
       console.warn(`[Server Prefetch] No appointments found for claim ${claimId}`);

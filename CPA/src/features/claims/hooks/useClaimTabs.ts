@@ -3,7 +3,7 @@
 // src/features/claims/hooks/useClaimTabs.ts
 import { useState } from 'react';
 
-export type ClaimTabValue = 'summary' | 'appointment' | 'inspection' | '360' | 'estimate' | 'pre-incident' | 'history';
+export type ClaimTabValue = 'summary' | 'appointment' | 'inspection' | 'estimate' | 'pre-incident' | 'history';
 
 /**
  * Hook for managing tabs in the claim detail view

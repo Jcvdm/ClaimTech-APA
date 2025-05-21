@@ -1,0 +1,231 @@
+---
+description: Data Access Layer (DAL) Pattern
+globs: ["CPA/src/lib/api/**/*"]
+alwaysApply: true
+---
+# Data Access Layer (DAL) Pattern
+
+The application uses a consistent Data Access Layer (DAL) pattern to separate UI components from data fetching/mutation logic. This pattern is built on top of tRPC and TanStack Query.
+
+## Directory Structure
+
+Each domain (e.g., claims, clients, vehicles) follows this structure:
+
+```
+src/lib/api/domains/[domain]/
+├── index.ts      # Re-exports everything + exports API object
+├── types.ts      # Domain-specific types
+├── queries.ts    # Functions for reading data
+├── mutations.ts  # Functions for writing data
+└── hooks.ts      # React hooks for components to use
+```
+
+## Implementation Guidelines
+
+### 1. Types (`types.ts`)
+
+```typescript
+// src/lib/api/domains/[domain]/types.ts
+import { type RouterOutputs, type RouterInputs } from "@/lib/api/types";
+
+// Export types derived from tRPC
+export type Entity = RouterOutputs["domain"]["procedure"];
+export type EntityCreateInput = RouterInputs["domain"]["create"];
+```
+
+### 2. Queries (`queries.ts`)
+
+```typescript
+// src/lib/api/domains/[domain]/queries.ts
+import { apiClient } from "@/lib/api/client";
+import { type QueryOptions } from "@/lib/api/client";
+import { type Entity } from "./types";
+
+export const domainQueries = {
+  /**
+   * Get all entities
+   */
+  getAll: (options?: QueryOptions<Entity[]>) => 
+    apiClient.query<Entity[]>(
+      () => apiClient.raw.domain.getAll.useQuery(), 
+      options
+    ),
+  
+  /**
+   * Get a single entity by ID
+   */
+  getById: (id: string, options?: QueryOptions<Entity>) => 
+    apiClient.query<Entity>(
+      () => apiClient.raw.domain.getById.useQuery({ id }), 
+      {
+        enabled: !!id,
+        ...options
+      }
+    ),
+};
+```
+
+### 3. Mutations (`mutations.ts`)
+
+```typescript
+// src/lib/api/domains/[domain]/mutations.ts
+import { apiClient } from "@/lib/api/client";
+import { type MutationOptions } from "@/lib/api/client";
+import { toast } from "sonner";
+import { type Entity, type EntityCreateInput } from "./types";
+
+export const domainMutations = {
+  /**
+   * Create a new entity
+   */
+  create: (options?: MutationOptions<Entity, EntityCreateInput>) => 
+    apiClient.mutation<Entity, EntityCreateInput>(
+      () => apiClient.raw.domain.create.useMutation(),
+      {
+        onSuccess: (data, variables) => {
+          toast.success("Entity created successfully");
+          options?.onSuccess?.(data, variables);
+        },
+        ...options
+      }
+    ),
+};
+```
+
+### 4. Hooks (`hooks.ts`)
+
+```typescript
+// src/lib/api/domains/[domain]/hooks.ts
+import { useQueryClient } from "@tanstack/react-query";
+import { domainQueries } from "./queries";
+import { domainMutations } from "./mutations";
+import { useQueryState } from "@/lib/api/hooks";
+import { getQueryKey } from "@/lib/api/utils";
+import { apiClient } from "@/lib/api/client";
+
+/**
+ * Hook for fetching all entities
+ */
+export function useEntities() {
+  const query = domainQueries.getAll();
+  return useQueryState(() => query);
+}
+
+/**
+ * Hook for fetching a single entity by ID
+ */
+export function useEntity(id: string) {
+  const query = domainQueries.getById(id);
+  return useQueryState(() => query);
+}
+
+/**
+ * Hook for creating an entity with cache invalidation
+ */
+export function useCreateEntity() {
+  const queryClient = useQueryClient();
+
+  return domainMutations.create({
+    onSuccess: () => {
+      // Invalidate relevant queries after successful creation
+      queryClient.invalidateQueries({ 
+        queryKey: getQueryKey(apiClient.raw.domain.getAll) 
+      });
+    }
+  });
+}
+```
+
+### 5. Index (`index.ts`)
+
+```typescript
+// src/lib/api/domains/[domain]/index.ts
+// Re-export everything for convenient imports
+export * from './types';
+export * from './hooks';
+
+// Export raw queries and mutations for advanced use cases
+import { domainQueries } from './queries';
+import { domainMutations } from './mutations';
+
+export const domainApi = {
+  queries: domainQueries,
+  mutations: domainMutations
+};
+```
+
+## Usage in Components
+
+Components should import and use the hooks from the domain:
+
+```tsx
+import { useEntities, useCreateEntity } from "@/lib/api/domains/domain";
+
+function EntityList() {
+  const { data: entities, isLoading, error } = useEntities();
+  const createEntity = useCreateEntity();
+
+  // Use the data and mutations in your component
+}
+```
+
+## Key Principles
+
+1. **Consistency**: All domains must follow the same pattern
+2. **Separation of Concerns**: UI components don't need to know about tRPC details
+3. **Lean Implementation**: Avoid unnecessary abstractions or boilerplate
+4. **Type Safety**: Use proper TypeScript types throughout
+5. **Cache Management**: Handle cache invalidation in mutation hooks
+6. **Error Handling**: Implement consistent error handling
+
+## Optimistic Updates Pattern
+
+For mutations that benefit from immediate UI feedback:
+
+```typescript
+export function useOptimisticUpdateEntity() {
+  const queryClient = useQueryClient();
+  const mutation = apiClient.raw.domain.update.useMutation();
+
+  return useMutation({
+    mutationFn: (variables) => mutation.mutateAsync(variables),
+    
+    // Optimistic update
+    onMutate: async (variables) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({
+        queryKey: getQueryKey(apiClient.raw.domain.getById, { id: variables.id })
+      });
+      
+      // Snapshot previous value
+      const previousEntity = queryClient.getQueryData(
+        getQueryKey(apiClient.raw.domain.getById, { id: variables.id })
+      );
+      
+      // Update cache optimistically
+      queryClient.setQueryData(
+        getQueryKey(apiClient.raw.domain.getById, { id: variables.id }),
+        (old) => old ? { ...old, ...variables } : undefined
+      );
+      
+      return { previousEntity };
+    },
+    
+    // Roll back on error
+    onError: (err, variables, context) => {
+      queryClient.setQueryData(
+        getQueryKey(apiClient.raw.domain.getById, { id: variables.id }),
+        context?.previousEntity
+      );
+      toast.error(`Failed to update: ${err.message}`);
+    },
+    
+    // Always refetch after error or success
+    onSettled: (data, error, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: getQueryKey(apiClient.raw.domain.getById, { id: variables.id })
+      });
+    },
+  });
+}
+```

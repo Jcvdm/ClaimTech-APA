@@ -9,7 +9,7 @@
 - ✅ Supabase integration
 - ✅ Shadcn UI components
 - ✅ Data Access Layer (DAL) pattern
-- ✅ Error handling with ErrorBoundary
+- ✅ Error handling with consolidated ErrorBoundary component
 
 ### Claims Management
 - ✅ Claims listing page with filtering and sorting
@@ -18,6 +18,7 @@
 - ✅ Create new claim form with multi-tab organization
 - ✅ Claim status updates
 - ✅ Vehicle inspection process with date/time recording
+- ✅ Integrated inspection form in the inspection tab
 
 ### Vehicle Management
 - ✅ Vehicle details display
@@ -40,6 +41,9 @@
 - ✅ Data tables with filtering and sorting
 - ✅ Form components with validation
 - ✅ Tab container with URL synchronization
+- ✅ Enhanced photo preview with window-like resizing
+- ✅ Photo upload components with drag-and-drop functionality
+- ✅ StorageImage component for Supabase storage integration
 
 ## In Progress Features
 
@@ -83,7 +87,87 @@
 
 ## Recent Achievements
 
-1. **Vehicle Inspection Process Implementation**
+1. **Enhanced Estimate Editor with Spreadsheet-like Experience**
+   - Implemented keyboard navigation (Tab/arrows/Enter) between cells
+   - Fixed decimal value handling issues (e.g., "0.5" being converted to "0.01")
+   - Added global synchronization status indicator for background saves
+   - Improved focus management with visual indicators for active cells
+   - Enhanced input validation for numeric fields
+   - Maintained spreadsheet-like experience with optimistic UI updates
+   - Preserved exact numeric values during editing and server synchronization
+   - Created a dedicated Zustand store for tracking synchronization status
+   - Implemented a non-intrusive indicator that appears at the top of the page
+   - Added proper ARIA attributes for screen readers
+
+2. **Enhanced Estimate Form with Improved UI and Default Values**
+   - Updated default values for labor rate (350.00) and paint material rate (2000.00)
+   - Set default markup percentages to 25% for both part markup and special services markup
+   - Removed paint markup completely as per requirements (no markup on paint)
+   - Improved numeric input fields by removing increment/decrement arrows
+   - Added proper decimal formatting for currency values (e.g., 2000.00)
+   - Adjusted field sizes based on content type (smaller fields for percentages)
+   - Added right alignment to all numeric fields for better readability
+   - Implemented proper validation to ensure only numbers and decimal points can be entered
+   - Updated labels to clarify that paint materials have no markup
+   - Fixed error handling for null values in subtotal calculations
+
+2. **Enhanced Photo Preview Modal with Window-like Functionality**
+   - Implemented resizable modal with handles on all corners and edges using react-rnd library
+   - Added maximize/restore button to toggle between default and full-screen views
+   - Implemented aspect ratio preservation during resizing
+   - Added session state persistence for size and position
+   - Improved panning behavior to only activate when zoomed in and clicking directly on the image
+   - Enhanced aspect ratio handling for better display on widescreen monitors
+   - Added visual indicators for available interactions (zoom level, pan instructions)
+   - Implemented comprehensive keyboard shortcuts for all operations
+   - Updated StorageImage component to use forwardRef for better DOM access
+   - Created a reusable pattern for photo preview across the application
+
+2. **Improved Inspection Photo Upload System**
+   - Updated all components to use the `claim-attachments` bucket instead of `vehicle-inspections`
+   - Implemented a consistent path structure: `claims/{claimId}/inspections/{inspectionId}/{section}/{type}`
+   - Created and applied SQL migrations to update the RLS policies for the `claim-attachments` bucket
+   - Updated the `useSupabaseStorage` hook to use the Zustand auth store for authentication
+   - Fixed RLS policy violation errors when uploading photos during vehicle inspections
+   - Improved error handling and logging in the `useSupabaseStorage` hook
+   - Updated the mock user ID in the AuthProvider to match the one used in the tRPC context
+   - Created a direct Supabase client with the correct options for better reliability
+
+2. **Improved Claim Count System Implementation**
+   - Fixed the `getCounts` procedure to use the `count` property from Supabase instead of `data?.length`
+   - Improved caching strategy with reduced refetch interval and better caching options
+   - Implemented optimistic updates for claim creation and status changes
+   - Added Supabase real-time subscriptions for instant updates
+   - Created a new `useHybridClaimCounts` hook that combines server-rendered counts with client-side updates
+   - Updated the `AppSidebar` component to use the hybrid approach
+   - Ensured compatibility with existing server-side rendering approach
+   - Added proper error handling and fallback mechanisms
+   - Implemented a solution that works with the existing architecture
+
+2. **Robust Job Number Generation System**
+   - Created a PostgreSQL sequence `global_job_number_seq` for generating unique numbers
+   - Implemented a `generate_next_job_number` function that combines client prefix with global sequence
+   - Updated the `create_claim_with_vehicle` function to use the new approach
+   - Updated the `generate_client_job_number` trigger function for consistency
+   - Added robust error handling and fallback mechanisms
+   - Ensured compatibility with existing job numbers
+   - Implemented the solution without requiring data migration
+   - Fixed the "duplicate key value violates unique constraint" error
+
+3. **Comprehensive Logging System Implementation**
+   - Created a new `claim_logs` table in Supabase with appropriate indexes and RLS policies
+   - Implemented a tRPC router for logs with procedures to create, fetch, and delete logs
+   - Created a Data Access Layer (DAL) for logs with types, queries, mutations, and hooks
+   - Implemented helper functions for creating specific types of logs (claim creation, status changes, appointments, inspections, etc.)
+   - Created a `LogEntry` component to display individual log entries
+   - Created a `LogsCard` component to display logs for a claim and allow users to add manual logs
+   - Added the `LogsCard` component to the claim overview tab
+   - Implemented server-side prefetching for logs to enable server-side rendering
+   - Integrated logging with existing claim operations (creation, status changes, appointments, inspections)
+   - Fixed query function implementation to ensure proper data fetching
+   - Added error handling and graceful degradation for the logs component
+
+2. **Vehicle Inspection Process Implementation**
    - Implemented vehicle inspection functionality in the inspection tab
    - Added database column `inspection_datetime` to store inspection date/time
    - Updated claim status enum to use "In Progress" instead of "Inspection Done"
@@ -151,7 +235,59 @@
 
 ## Recent Fixes
 
-1. **Fixed Server-Side Rendering Issues** ✅ FIXED
+1. **Fixed ImagePreview Auto-Opening Issue** ✅ FIXED
+   - Fixed issue where the ImagePreview component automatically opened when clicking on the inspection tab
+   - Created an ImagePreviewWrapper component to isolate dialog state and ensure proper component lifecycle
+   - Implemented mount state tracking to prevent auto-opening during component initialization
+   - Added unique keys to force React to create new instances when filePath changes
+   - Added reset effects to ensure dialog is closed when component mounts or filePath changes
+   - Implemented fully controlled mode for the Dialog component to prevent unexpected state changes
+   - Updated all components using ImagePreview to use the new wrapper component
+   - Removed console logs that might cause performance issues
+   - Implemented a comprehensive solution that addresses the root cause rather than symptoms
+
+2. **Fixed Appointment Form Location Type Dropdown** ✅ FIXED
+   - Fixed issue where the location type dropdown in the appointment form wasn't displaying selected values
+   - Replaced standard Select component with the more robust EnhancedSelect component
+   - Converted LocationTypeOptions to the format expected by EnhancedSelect (from `{value, label}` to `{id, name}`)
+   - Added proper logging for debugging dropdown value changes
+   - Maintained form description and styling for consistency
+   - Ensured the dropdown properly displays the selected option's text after selection
+   - Used the same pattern that works successfully in the claim creation form
+   - Implemented a comprehensive solution that addresses the root cause rather than symptoms
+
+2. **Fixed Claim Count Updates** ✅ FIXED
+   - Fixed the `getCounts` procedure to use the `count` property from Supabase instead of `data?.length`
+   - Implemented a hybrid approach that combines server-rendered counts with client-side updates
+   - Created a new `useHybridClaimCounts` hook for better integration
+   - Added real-time subscriptions for instant updates when claims are created or updated
+   - Implemented optimistic updates for immediate feedback when creating claims or changing status
+   - Reduced refetch interval from 60 seconds to 15 seconds for more frequent updates
+   - Added proper staleTime and gcTime settings for better cache management
+   - Ensured compatibility with existing server-side rendering approach
+   - Verified fixes by successfully creating claims and seeing immediate count updates
+
+2. **Fixed Job Number Generation** ✅ FIXED
+   - Fixed "duplicate key value violates unique constraint" error when creating new claims
+   - Implemented a global sequential numbering system using PostgreSQL sequence
+   - Created a `generate_next_job_number` function that combines client prefix with global sequence
+   - Updated the `create_claim_with_vehicle` function to use the new approach
+   - Added robust error handling and fallback mechanisms
+   - Ensured compatibility with existing job numbers
+   - Implemented the solution without requiring data migration
+   - Verified fixes by successfully creating multiple claims without conflicts
+
+3. **Fixed Type Casting Issues in Claim Creation** ✅ FIXED
+   - Fixed `column "time_of_loss" is of type time without time zone but expression is of type text` error
+   - Fixed `column "type_of_loss" is of type type_of_loss_enum but expression is of type text` error
+   - Fixed `column "status" is of type claim_status_enum but expression is of type text` error
+   - Updated `create_claim_with_vehicle` function to properly cast string values to their respective PostgreSQL types
+   - Added validation and error handling for all enum and time type fields
+   - Implemented consistent pattern for type casting across all fields
+   - Created migration files for each fix to ensure proper database updates
+   - Verified fixes by successfully creating claims with the updated function
+
+2. **Fixed Server-Side Rendering Issues** ✅ FIXED
    - Fixed `invalid input value for enum claim_status_enum: "undefined"` error in claim router
    - Updated claim router to handle null values properly using `or()` method with `status.in.()` syntax
    - Fixed ErrorBoundary component issues in server components
@@ -161,14 +297,14 @@
    - Added more detailed logging for better debugging
    - Implemented graceful fallbacks for when errors occur
 
-2. **Fixed Claim Status Enum Changes** ✅ FIXED
+3. **Fixed Claim Status Enum Changes** ✅ FIXED
    - Updated code to use IN_PROGRESS instead of INSPECTION_DONE in all queries
    - Fixed status filtering in claims list and getCounts procedures
    - Ensured proper handling of nullable status fields in database queries
    - Updated UI components to reflect the new status values
    - Implemented consistent status handling across the application
 
-3. **Fixed Build Errors** ✅ FIXED
+4. **Fixed Build Errors** ✅ FIXED
    - Fixed "TypeError: path is not iterable" error in multiple components
    - Fixed "date.toLocaleDateString is not a function" error in claims table
    - Fixed tRPC error with "post.getLatest" procedure
@@ -176,7 +312,7 @@
    - Fixed remaining "path is not iterable" error in useActiveClaimSession hook
    - Ensured consistent query key generation across the entire application
 
-4. **Fixed ExpandableRow Component** ✅ FIXED
+5. **Fixed ExpandableRow Component** ✅ FIXED
    - Fixed "usePrefetchClaim is not defined" error in ExpandableRow component
    - Replaced direct tRPC hook usage with safer approach using no-op functions
    - Fixed circular errors in tRPC proxy decoration
@@ -184,7 +320,7 @@
    - Added defensive cell rendering to handle edge cases in data table
    - Improved component stability and error resilience
 
-5. **Fixed Supabase Client Integration** ✅ FIXED
+6. **Fixed Supabase Client Integration** ✅ FIXED
    - Fixed "Can't resolve '@supabase/auth-helpers-react'" error in real-time updates
    - Updated implementation to use project's own Supabase client creation function
    - Created Supabase client inside useEffect hook to follow best practices
@@ -192,11 +328,33 @@
 
 ## Known Issues
 
-1. **Server-Side Prefetching** ✅ FIXED
+1. **Inspection Photo Upload RLS Policies** ✅ FIXED
+   - ~~Row Level Security (RLS) policy violations when uploading photos during vehicle inspections~~
+   - ~~The `vehicle-inspections` bucket had restrictive RLS policies that prevented uploads~~
+   - Fixed by updating all components to use the `claim-attachments` bucket with a consistent path structure
+   - Created and applied SQL migrations to update the RLS policies for the `claim-attachments` bucket
+   - Updated the `useSupabaseStorage` hook to use the Zustand auth store for authentication
+   - Improved error handling and logging in the `useSupabaseStorage` hook
+   - Enhanced the StorageImage component to better handle different URL formats and provide detailed logging
+   - Fixed data integrity issue where photos exist in storage but inspection records were missing from database
+
+2. **Server-Side Prefetching** ✅ FIXED
    - ~~Server-side prefetching for claims is failing with 'No procedure found on path' errors~~
    - ~~tRPC server client configuration needs to be fixed for proper server-side rendering~~
    - Fixed by creating a proper request context for server-side tRPC calls
    - Implemented consistent approach across all server-side prefetching functions
+
+2. **Claim Count Updates** ✅ FIXED
+   - ~~Claim counts in the sidebar are not updating when new claims are created~~
+   - ~~The counts are only updated after a page refresh or when the refetch interval (60 seconds) is reached~~
+   - Fixed by implementing a hybrid approach that combines server-rendered counts with client-side updates
+   - Added real-time subscriptions and optimistic updates for immediate feedback
+
+3. **Job Number Generation** ✅ FIXED
+   - ~~Creating new claims sometimes fails with "duplicate key value violates unique constraint" error~~
+   - ~~The job number generation system is not handling cases where claims were created with fallback "UNK" prefix~~
+   - Fixed by implementing a global sequential numbering system using PostgreSQL sequence
+   - Created a robust job number generation function that ensures uniqueness
 
 2. **recordInspection Procedure Output Validation** 🔄 IN PROGRESS
    - The logs show an error with output validation for the recordInspection procedure

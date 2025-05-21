@@ -11,7 +11,6 @@ import { TabNavigation } from './TabNavigation';
 import { SummaryTab } from './TabContent/SummaryTab';
 // AppointmentTab has been moved to the App Router structure
 import { InspectionTab } from './TabContent/InspectionTab';
-import { ThreeSixtyTab } from './TabContent/ThreeSixtyTab';
 import { EstimateTab } from './TabContent/EstimateTab';
 import { PreIncidentTab } from './TabContent/PreIncidentTab';
 import { HistoryTab } from './TabContent/HistoryTab';
@@ -82,10 +81,6 @@ export function ClaimDetails({ id }: ClaimDetailsProps) {
 
         <TabsContent value="inspection" className="mt-6">
           <InspectionTab claim={claim} />
-        </TabsContent>
-
-        <TabsContent value="360" className="mt-6">
-          <ThreeSixtyTab claim={claim} />
         </TabsContent>
 
         <TabsContent value="estimate" className="mt-6">

@@ -7,11 +7,38 @@ import {
   type ClaimCreateInput,
   type ClaimUpdateInput,
   type ClaimStatus,
-  type ClaimCreateInputWithOptionalFields // Import the new type
+  type ClaimCreateInputWithOptionalFields, // Import the new type
+  type ClaimWithVehicleInput
 } from "./types";
-import { type RouterInputs } from "@/lib/api/types";
+import { type RouterInputs } from "@/trpc/shared";
 
 export const claimMutations = {
+  /**
+   * Create a new claim with vehicle in a single transaction
+   */
+  createClaimWithVehicle: (
+    options?: MutationOptions<ClaimWithRelations, ClaimWithVehicleInput>
+  ) =>
+    apiClient.mutation<ClaimWithRelations, ClaimWithVehicleInput>(
+      () => apiClient.raw.claim.createClaimWithVehicle.useMutation(),
+      {
+        onSuccess: async (data, variables) => {
+          toast.success("Claim created successfully");
+
+          // Log the claim creation
+          try {
+            const { logClaimCreated } = await import("@/lib/api/domains/logs/mutations");
+            await logClaimCreated(data.id, data).mutateAsync({} as any);
+          } catch (error) {
+            console.error("Failed to log claim creation:", error);
+          }
+
+          options?.onSuccess?.(data, variables);
+        },
+        ...options
+      }
+    ),
+
   /**
    * Create a new claim
    */
@@ -21,8 +48,17 @@ export const claimMutations = {
     apiClient.mutation<ClaimWithRelations, ClaimCreateInputWithOptionalFields>( // Use the new type
       () => apiClient.raw.claim.create.useMutation(),
       {
-        onSuccess: (data, variables) => {
+        onSuccess: async (data, variables) => {
           toast.success("Claim created successfully");
+
+          // Log the claim creation
+          try {
+            const { logClaimCreated } = await import("@/lib/api/domains/logs/mutations");
+            await logClaimCreated(data.id, data).mutateAsync({} as any);
+          } catch (error) {
+            console.error("Failed to log claim creation:", error);
+          }
+
           options?.onSuccess?.(data, variables);
         },
         ...options
@@ -55,8 +91,24 @@ export const claimMutations = {
     apiClient.mutation<ClaimWithRelations, { id: string, status: ClaimStatus }>(
       () => apiClient.raw.claim.updateStatus.useMutation(),
       {
-        onSuccess: (data, variables) => {
+        onMutate: async (variables) => {
+          // Store the old status for logging
+          const queryKey = ["claim", "getById", { id: variables.id }];
+          const previousClaim = apiClient.getQueryData<ClaimWithRelations>(queryKey);
+          return { previousClaim };
+        },
+        onSuccess: async (data, variables, context) => {
           toast.success(`Claim status updated to ${data.status}`);
+
+          // Log the status change
+          try {
+            const oldStatus = context?.previousClaim?.status || "Unknown";
+            const { logClaimStatusChanged } = await import("@/lib/api/domains/logs/mutations");
+            await logClaimStatusChanged(data.id, oldStatus, data.status).mutateAsync({} as any);
+          } catch (error) {
+            console.error("Failed to log claim status change:", error);
+          }
+
           options?.onSuccess?.(data, variables);
         },
         ...options

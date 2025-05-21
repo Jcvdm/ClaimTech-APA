@@ -2,6 +2,8 @@
 // Re-export everything for convenient imports
 export * from './types';
 export * from './constants';
+export * from './realtime';
+export * from './useHybridClaimCounts';
 
 // Import hooks and claimCache with renamed exports to avoid conflicts
 import * as hooksExports from './hooks';
@@ -20,7 +22,8 @@ export const {
   useClaimDetails,
   useClaimSummary,
   useClaimFullDetails,
-  useRecordInspection
+  useRecordInspection,
+  useCreateClaimWithVehicle
 } = hooksExports;
 
 // Re-export everything from claimCache except useClaimPrefetching

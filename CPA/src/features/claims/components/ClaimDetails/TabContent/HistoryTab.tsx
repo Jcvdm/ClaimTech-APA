@@ -3,8 +3,8 @@
 // src/features/claims/components/ClaimDetails/TabContent/HistoryTab.tsx
 import { type ClaimDetails } from '@/lib/api/domains/claims/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { History } from 'lucide-react';
 import { format } from 'date-fns';
+import { History } from 'lucide-react';
 
 interface HistoryTabProps {
   claim: ClaimDetails;
@@ -20,9 +20,10 @@ export function HistoryTab({ claim }: HistoryTabProps) {
     <div className="space-y-6">
       <h2 className="text-2xl font-bold">History</h2>
 
+      {/* Basic claim creation info */}
       <Card>
         <CardHeader>
-          <CardTitle>Claim History</CardTitle>
+          <CardTitle>Claim Creation</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
@@ -38,16 +39,17 @@ export function HistoryTab({ claim }: HistoryTabProps) {
               </div>
             </div>
           </div>
-
-          <div className="flex flex-col items-center justify-center py-8 text-center">
-            <History className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium">No additional history available</h3>
-            <p className="text-muted-foreground mt-2">
-              The complete history log will be implemented in a future update.
-            </p>
-          </div>
         </CardContent>
       </Card>
+
+      <div className="flex flex-col items-center justify-center py-8 text-center">
+        <History className="h-12 w-12 text-muted-foreground mb-4" />
+        <h3 className="text-lg font-medium">History tab is under development</h3>
+        <p className="text-muted-foreground mt-2">
+          The complete history functionality will be implemented in a future update.
+          Activity logs can be found on the Overview tab.
+        </p>
+      </div>
     </div>
   );
 }

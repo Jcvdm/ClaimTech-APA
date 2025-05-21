@@ -151,8 +151,12 @@ export function AdjusterDetailsTab({
             Previous
           </Button>
           <Button
-            type="submit"
+            type="submit" // Changed to submit type to trigger the form's submit handler
             disabled={isSubmitting}
+            onClick={() => {
+              console.log("Create Claim button clicked");
+              // The form's submit handler will handle the submission
+            }}
           >
             {isSubmitting ? "Creating..." : "Create Claim"}
           </Button>

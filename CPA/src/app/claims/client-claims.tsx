@@ -157,6 +157,39 @@ function ClientClaimsInner() {
     paramsRef.current = params;
   }, [params]);
 
+  // Listen for claim creation events and refresh data
+  React.useEffect(() => {
+    // Check for force refresh flag in localStorage
+    const forceRefresh = window.localStorage.getItem('forceClaimsRefresh');
+    if (forceRefresh) {
+      console.log(`[ClientClaims] Force refresh flag detected, invalidating queries`);
+      queryClient.invalidateQueries({ queryKey: ['claims'] });
+      queryClient.invalidateQueries({ queryKey: [['trpc', 'claim']] });
+      window.localStorage.removeItem('forceClaimsRefresh');
+
+      // Force a refresh of the claims list
+      setParams(prev => ({ ...prev, _refresh: Date.now() }));
+    }
+
+    // Set up event listener for claim creation
+    const handleClaimCreated = (event: CustomEvent) => {
+      console.log(`[ClientClaims] Claim created event detected:`, event.detail);
+      queryClient.invalidateQueries({ queryKey: ['claims'] });
+      queryClient.invalidateQueries({ queryKey: [['trpc', 'claim']] });
+
+      // Force a refresh of the claims list
+      setParams(prev => ({ ...prev, _refresh: Date.now() }));
+    };
+
+    // Add event listener
+    window.addEventListener('claimCreated', handleClaimCreated as EventListener);
+
+    // Clean up
+    return () => {
+      window.removeEventListener('claimCreated', handleClaimCreated as EventListener);
+    };
+  }, [queryClient]);
+
   // Single effect for logging that doesn't depend on the values directly
   React.useEffect(() => {
     // Use a timer to avoid too frequent logging

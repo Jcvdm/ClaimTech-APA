@@ -1,6 +1,132 @@
 # Active Context
 
-## Current Focus: Server-Side Rendering Fixes and Claim Status Updates
+## Current Focus: Estimate Editor Enhancements and UI Improvements
+
+We've enhanced the estimate editor with improved UI, keyboard navigation, decimal value handling, and a global synchronization status indicator. We've also fixed issues with the photo preview component and appointment form.
+
+### 1. Implemented Global Synchronization Status Indicator
+
+We've implemented a global synchronization status indicator for the estimate editor that provides unobtrusive feedback about the overall sync state between client and server:
+
+**Key Components:**
+- **Zustand Store**: Created a dedicated Zustand store for tracking synchronization status
+- **Status Indicator Component**: Implemented a non-intrusive indicator that appears at the top of the page
+- **Status Tracking**: Shows "Syncing..." during changes and "All changes saved" when complete
+- **Error Handling**: Displays error messages when sync operations fail
+- **Automatic Cleanup**: Success and error messages automatically clear after appropriate delays
+- **Multiple Operation Tracking**: Aggregates multiple concurrent sync operations into a single status
+- **Unobtrusive Design**: Fixed position in the top-right corner with subtle styling
+- **Accessibility**: Added proper ARIA attributes for screen readers
+
+### 2. Enhanced Estimate Editor with Keyboard Navigation and Decimal Handling
+
+We've implemented comprehensive improvements to the estimate line editor to function more like a spreadsheet:
+
+**Key Components:**
+- **Keyboard Navigation**: Added Tab/Shift+Tab, arrow keys, and Enter key navigation between cells
+- **Decimal Value Handling**: Fixed issues with decimal values like "0.5" being incorrectly converted to "0.01"
+- **Focus Management**: Implemented proper focus tracking and visual indicators for the active cell
+- **Text Selection**: Auto-selects text when focusing on a cell for easier editing
+- **Cursor Position**: Maintains cursor position during editing for better user experience
+- **Input Validation**: Enhanced validation for numeric fields with support for both comma and period as decimal separators
+- **Optimistic UI**: Maintains the spreadsheet-like experience with immediate local updates
+- **Dual-State Management**: Preserves the existing dual-state system that maintains user input during server synchronization
+
+### 3. Fixed ImagePreview Auto-Opening Issue
+
+We've implemented a comprehensive solution to fix the issue where the ImagePreview component automatically opened when clicking on the inspection tab:
+
+**Key Components:**
+- **ImagePreviewWrapper Component**: Created a wrapper component to isolate dialog state and ensure proper component lifecycle
+- **Mount State Tracking**: Implemented tracking to prevent auto-opening during component initialization
+- **Unique Keys**: Added unique keys to force React to create new instances when filePath changes
+- **Reset Effects**: Added effects to ensure dialog is closed when component mounts or filePath changes
+- **Controlled Dialog Mode**: Implemented fully controlled mode for the Dialog component to prevent unexpected state changes
+- **Component Updates**: Updated all components using ImagePreview to use the new wrapper component
+- **Performance Optimization**: Removed console logs that might cause performance issues
+- **Root Cause Solution**: Implemented a comprehensive solution that addresses the underlying issues rather than symptoms
+
+### 4. Enhanced Photo Preview Modal with Window-like Functionality
+
+We've implemented a comprehensive enhancement to the photo preview modal to provide a more desktop-like experience:
+
+**Key Components:**
+- **Resizable Modal**: Added resize handles to all corners and edges using react-rnd library
+- **Aspect Ratio Preservation**: Maintained image aspect ratio during resizing
+- **Size Constraints**: Implemented minimum and maximum size constraints for usability
+- **Session Persistence**: Ensured resized state persists during the current session
+- **Maximize/Restore**: Added a button to toggle between default and full-screen views
+- **Improved Panning**: Modified panning behavior to only activate when zoomed in and clicking directly on the image
+- **Widescreen Optimization**: Enhanced aspect ratio handling for better display on widescreen monitors
+- **Visual Indicators**: Added clear visual cues for available interactions (zoom level, pan instructions)
+- **Keyboard Navigation**: Implemented comprehensive keyboard shortcuts for all operations
+
+### 5. Fixed Appointment Form Location Type Dropdown
+
+We've replaced the standard Select component with the more robust EnhancedSelect component that has proven to work reliably in other parts of the application:
+
+**Key Components:**
+- **Component Replacement**: Replaced standard Select with EnhancedSelect component for the location type field
+- **Data Format Adaptation**: Converted LocationTypeOptions to the format expected by EnhancedSelect (from `{value, label}` to `{id, name}`)
+- **Enhanced Logging**: Added proper logging for debugging dropdown value changes
+- **Consistent Styling**: Maintained form description and styling for consistency
+- **Value Persistence**: Leveraged EnhancedSelect's built-in value persistence and recovery mechanisms
+- **Root Cause Solution**: Implemented a comprehensive solution that addresses the underlying issues rather than symptoms
+
+### 6. Added Province Information to Appointment Form
+
+We've added the province information from the claim as a read-only field in the appointment form:
+
+**Key Components:**
+- **ProvinceDisplay Component**: Created a dedicated component to display province information
+- **Data Fetching**: Used the lookup.getProvinces API to fetch province data
+- **Read-Only Display**: Implemented a disabled input field with appropriate styling
+- **Visual Indicator**: Added a map pin icon for better visual recognition
+- **Fallback Handling**: Added proper handling for loading states and missing data
+
+## Previous Focus: Inspection Photo Upload System Improvements
+
+We've implemented significant improvements to the inspection photo upload system to ensure photos are stored in the correct Supabase bucket with a consistent path structure. These changes have fixed issues with Row Level Security (RLS) policy violations when uploading photos during vehicle inspections.
+
+### 1. Unified Storage Bucket
+
+We've consolidated all file uploads to use a single Supabase storage bucket:
+
+**Key Components:**
+- **Consistent Bucket Usage**: Updated all components to use the `claim-attachments` bucket instead of `vehicle-inspections`
+- **Standardized Path Structure**: Implemented a consistent path structure: `claims/{claimId}/inspections/{inspectionId}/{section}/{type}`
+- **RLS Policy Updates**: Created and applied SQL migrations to update the RLS policies for the `claim-attachments` bucket
+- **Authentication Integration**: Updated the `useSupabaseStorage` hook to use the Zustand auth store for authentication
+- **Enhanced StorageImage Component**: Improved the component to better handle different URL formats and provide detailed logging
+- **Data Integrity Fix**: Addressed issue where photos exist in storage but inspection records were missing from database
+
+## Previous Focus: Claim Count System Improvements and Job Number Generation
+
+We've implemented significant improvements to the claim count system and job number generation to ensure accurate sidebar badge counts and reliable job number creation. These changes have fixed issues with counts not updating when new claims are created and job numbers having duplicate key violations.
+
+### 1. Improved Claim Count System
+
+We've implemented a hybrid approach to claim counts that combines server-side rendering with client-side updates:
+
+**Key Components:**
+- **Fixed getCounts Procedure**: Updated to use the `count` property from Supabase instead of `data?.length`
+- **Improved Caching Strategy**: Reduced refetch interval and added better caching options
+- **Optimistic Updates**: Implemented optimistic updates for claim creation and status changes
+- **Real-time Updates**: Added Supabase real-time subscriptions for instant updates
+- **Hybrid Approach**: Created a new `useHybridClaimCounts` hook that combines server-rendered counts with client-side updates
+
+### 2. Robust Job Number Generation
+
+We've implemented a global sequential numbering system for job numbers to avoid duplicate key violations:
+
+**Key Components:**
+- **Global Sequence**: Created a PostgreSQL sequence for generating unique numbers across all clients
+- **Client Prefix Retention**: Maintained client prefixes for immediate recognition
+- **Error Handling**: Added robust error handling and fallback mechanisms
+- **Compatibility**: Ensured compatibility with existing job numbers
+- **No Data Migration**: Implemented the solution without requiring data migration
+
+## Previous Focus: Server-Side Rendering Fixes and Claim Status Updates
 
 We've fixed critical issues with server-side rendering, claim status enum handling, and error boundaries. These fixes have significantly improved the stability and performance of the application, particularly for the claims list and claim details pages.
 
@@ -307,6 +433,9 @@ The server-side rendering fixes, claim status enum handling, error boundary impr
   - Fixed date formatting issues with robust validation and conversion
   - Added error handling for prefetch operations
   - Implemented consistent approach to query key generation
+  - Optimized inspection form layout with side-by-side registration and license disc sections
+  - Removed redundant components (damage section, vehicle overview, separate 360° tab)
+  - Streamlined tab structure by integrating 360° view into the inspection tab
 
 - **Appointment Management System**:
   - Comprehensive appointment management system with create, edit, cancel, and reschedule functionality
@@ -320,38 +449,61 @@ The server-side rendering fixes, claim status enum handling, error boundary impr
   - Fixed UI issues with appointment forms (date selection, modal opening)
   - Deduplication of appointment data to prevent duplicate cards
 
+### Implementation Details
+
+1. **Global Synchronization Status Indicator**:
+   - Created `src/stores/syncStatusStore.ts` with Zustand store for tracking sync status
+   - Implemented `src/components/ui/SyncStatusIndicator.tsx` component for visual feedback
+   - Updated `EditableEstimateLinesTable.tsx` to use the sync status store
+   - Modified `syncLineWithServer`, `handleAddLine`, and `handleDeleteLine` functions to track operations
+   - Added the indicator to `EstimateTabContent.tsx` for all views
+
+2. **Estimate Editor Keyboard Navigation**:
+   - Added focused cell state tracking in `EditableEstimateLinesTable.tsx`
+   - Implemented keyboard event handlers for Tab, arrow keys, and Enter
+   - Created navigation helper functions for horizontal and vertical movement
+   - Added visual indicators for the focused cell
+   - Ensured proper focus management when navigating between cells
+
+3. **Decimal Value Handling**:
+   - Enhanced number parsing to support both comma and period as decimal separators
+   - Fixed issues with decimal values like "0.5" being incorrectly converted to "0.01"
+   - Improved input field behavior with better validation and formatting
+   - Added proper handling for raw vs. formatted values
+   - Ensured exact numeric values are preserved during editing and server synchronization
+
 ### Next Steps
 
-1. **Fix Remaining Server-Side Rendering Issues**:
+1. **Further Enhance Estimate Editor**:
+   - Implement sequence number handling with drag-and-drop reordering
+   - Add bulk operations for multiple selected rows
+   - Improve part number field with collapsible/expandable functionality
+   - Add copy/paste functionality for cells and rows
+   - Implement formula support for basic calculations between cells
+
+2. **Fix Remaining Server-Side Rendering Issues**:
    - Fix the recordInspection procedure output validation error
    - Optimize timeout values for production environment
    - Implement a more sophisticated retry mechanism
    - Add more comprehensive error tracking
    - Enhance caching strategy for frequently accessed data
 
-2. **Enhance Appointment Management**:
+3. **Enhance Appointment Management**:
    - Add email notifications for appointment changes
    - Implement calendar integration for appointment scheduling
    - Add bulk appointment management features
    - Create appointment reports and analytics
 
-3. **Expand Claim Processing Features**:
+4. **Expand Claim Processing Features**:
    - Implement inspection data capture
    - Add estimate creation and approval workflow
    - Integrate with repair shop systems
    - Add document generation for reports and authorizations
 
-4. **Improve User Experience**:
+5. **Improve User Experience**:
    - Add more interactive elements to the claim details page
    - Implement drag-and-drop for file uploads
-   - Add keyboard shortcuts for common actions
    - Create a mobile-optimized view for field adjusters
-
-5. **System Integration**:
-   - Implement webhooks for external system notifications
-   - Add API endpoints for third-party integrations
-   - Create data export features for reporting systems
-   - Implement single sign-on (SSO) for enterprise clients
 
 6. **Performance and Reliability**:
    - Implement more comprehensive error tracking

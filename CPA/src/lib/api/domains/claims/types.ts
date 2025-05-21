@@ -1,6 +1,6 @@
 // src/lib/api/domains/claims/types.ts
 import { z } from "zod";
-import { type RouterOutputs, type RouterInputs } from "@/lib/api/types";
+import { type RouterOutputs, type RouterInputs } from "@/trpc/shared";
 import { type PaginatedResponse } from "@/lib/api/types";
 
 // Define Zod schemas for validation
@@ -19,6 +19,7 @@ export const ClaimListParamsSchema = z.object({
   search: z.string().optional(),
   sortBy: z.string().optional(),
   sortOrder: z.enum(['asc', 'desc']).optional(),
+  _refresh: z.number().optional(), // Internal property to force refresh
 });
 
 // Export types derived from tRPC
@@ -35,6 +36,7 @@ export type ClaimCountsResponse = {
 };
 export type ClaimCreateInput = RouterInputs["claim"]["create"];
 export type ClaimUpdateInput = RouterInputs["claim"]["update"];
+export type ClaimWithVehicleInput = RouterInputs["claim"]["createClaimWithVehicle"];
 
 // Claim summary type for expandable rows
 export interface ClaimSummary {

@@ -7,6 +7,8 @@ import { appointmentRouter } from "@/server/api/routers/appointment";
 import { createCallerFactory, createTRPCRouter } from "@/server/api/trpc";
 import { lookupRouter } from "@/server/api/routers/lookup";
 import { inspectionRouter } from "@/server/api/routers/inspection";
+import { logRouter } from "@/server/api/routers/log";
+import { estimateRouter } from "@/server/api/routers/estimate";
 
 /**
  * This is the primary router for your server.
@@ -22,6 +24,8 @@ export const appRouter = createTRPCRouter({
 	appointment: appointmentRouter,
 	lookup: lookupRouter,
 	inspection: inspectionRouter,
+	log: logRouter,
+	estimate: estimateRouter,
 });
 
 // export type definition of API

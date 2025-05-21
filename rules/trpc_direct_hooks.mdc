@@ -1,0 +1,117 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# tRPC Direct Hooks Pattern
+
+## Purpose
+Document the preferred pattern for accessing tRPC procedures from React components based on our experience with form dropdowns and data fetching.
+
+## Key Considerations
+
+1. **Direct tRPC Hooks for Simple Reads**
+   - Use direct tRPC hooks for simple data fetching operations
+   - Provides better reliability and clearer debugging
+   - Helps ensure network requests are properly triggered
+
+2. **DAL Pattern for Complex Operations**
+   - Use the Data Access Layer for complex operations
+   - Particularly valuable for mutations requiring cache invalidation
+   - Better for orchestrating multiple related operations
+
+## Implementation Guidelines
+
+### Direct Hook Pattern (Preferred for Simple Reads)
+
+```tsx
+// Import the api directly from trpc/react
+import { api } from "@/trpc/react";
+
+function MyComponent() {
+  // Use direct tRPC hooks for simple data fetching operations
+  const { 
+    data, 
+    isLoading, 
+    isError 
+  } = api.[router].[procedure].useQuery([params], {
+    // Options directly passed to TanStack Query
+    staleTime: Infinity,
+    retry: 2,
+  });
+
+  // Component logic using data, isLoading, isError
+}
+```
+
+### DAL Pattern (For Complex Operations)
+
+```tsx
+// Import from the Data Access Layer
+import { useCreateClaim, useOptimisticUpdateClaimStatus } from "@/lib/api/domains/claims";
+
+function MyComponent() {
+  // Complex operations with cache invalidation, optimistic updates, etc.
+  const createClaim = useCreateClaim();
+  const updateStatus = useOptimisticUpdateClaimStatus();
+
+  const handleStatusChange = (id, status) => {
+    updateStatus.mutate({ id, status });
+  };
+}
+```
+
+## Troubleshooting
+
+If form dropdowns or other data-driven UI elements aren't populating:
+
+1. **Check Network Requests:** Verify tRPC calls are being made in the Network tab
+2. **Use Direct Hooks:** Switch to direct tRPC hooks using `api.[router].[procedure].useQuery()`
+3. **Simplify Options:** Initially test with minimal options, add staleTime/retry once working
+4. **Console Log the API Object:** Debug by logging the structure of the api object
+5. **Check Server Procedures:** Ensure the target procedure exists in the router definition
+
+## Example: Dropdown Component with Direct Hook
+
+```tsx
+import { api } from "@/trpc/react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+function ProvinceDropdown({ value, onChange, disabled }) {
+  // Direct tRPC hook pattern
+  const { 
+    data: provinces, 
+    isLoading, 
+    isError 
+  } = api.lookup.getProvinces.useQuery(undefined, {
+    staleTime: Infinity,
+  });
+
+  return (
+    <Select
+      disabled={isLoading || isError || disabled}
+      value={value}
+      onValueChange={onChange}
+    >
+      <SelectTrigger>
+        <SelectValue placeholder="Select province" />
+      </SelectTrigger>
+      <SelectContent>
+        {isLoading ? (
+          <SelectItem value="loading" disabled>Loading provinces...</SelectItem>
+        ) : isError ? (
+          <SelectItem value="error" disabled>Error loading provinces</SelectItem>
+        ) : (
+          provinces?.map((province) => (
+            <SelectItem key={province.id} value={province.id}>
+              {province.name}
+            </SelectItem>
+          ))
+        )}
+      </SelectContent>
+    </Select>
+  );
+}
+```
+
+**Remember:** For simple data fetching, direct hooks provide more predictable behavior and easier debugging. 

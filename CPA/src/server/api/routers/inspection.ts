@@ -1,10 +1,11 @@
 // src/server/api/routers/inspection.ts
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
-import { 
-  InspectionCreateInputSchema, 
+import {
+  InspectionCreateInputSchema,
   InspectionOutputSchema,
-  InspectionGetByClaimInputSchema
+  InspectionGetByClaimInputSchema,
+  InspectionGetByIdInputSchema
 } from "@/lib/api/domains/inspections/types";
 import { TRPCError } from "@trpc/server";
 import { ClaimStatus } from "@/lib/api/domains/claims/types";
@@ -24,22 +25,22 @@ export const inspectionRouter = createTRPCRouter({
             vehicle_id: input.vehicle_id,
             inspection_datetime: new Date().toISOString(),
             inspector_id: ctx.user.id,
-            
+
             // Registration details
             registration_number: input.registration_number,
             registration_photo_path: input.registration_photo_path,
-            
+
             // License disc details
             license_disc_present: input.license_disc_present,
             license_disc_expiry: input.license_disc_expiry,
             license_disc_photo_path: input.license_disc_photo_path,
-            
+
             // VIN details
             vin_number: input.vin_number,
             vin_dash_photo_path: input.vin_dash_photo_path,
             vin_plate_photo_path: input.vin_plate_photo_path,
             vin_number_photo_path: input.vin_number_photo_path,
-            
+
             // 360 view photos
             front_view_photo_path: input.front_view_photo_path,
             right_front_view_photo_path: input.right_front_view_photo_path,
@@ -49,7 +50,7 @@ export const inspectionRouter = createTRPCRouter({
             left_rear_view_photo_path: input.left_rear_view_photo_path,
             left_side_view_photo_path: input.left_side_view_photo_path,
             left_front_view_photo_path: input.left_front_view_photo_path,
-            
+
             // Notes
             notes: input.notes,
           })
@@ -87,7 +88,7 @@ export const inspectionRouter = createTRPCRouter({
         throw error;
       }
     }),
-    
+
   // Get inspections by claim ID
   getByClaim: protectedProcedure
     .input(InspectionGetByClaimInputSchema)
@@ -111,6 +112,33 @@ export const inspectionRouter = createTRPCRouter({
         return data || [];
       } catch (error) {
         console.error("Error in getByClaim procedure:", error);
+        throw error;
+      }
+    }),
+
+  // Get inspection by ID
+  getById: protectedProcedure
+    .input(InspectionGetByIdInputSchema)
+    .output(InspectionOutputSchema)
+    .query(async ({ ctx, input }) => {
+      try {
+        const { data, error } = await ctx.supabase
+          .from("vehicle_inspections")
+          .select("*")
+          .eq("id", input.id)
+          .single();
+
+        if (error) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to get inspection: ${error.message}`,
+            cause: error,
+          });
+        }
+
+        return data;
+      } catch (error) {
+        console.error("Error in getById procedure:", error);
         throw error;
       }
     }),

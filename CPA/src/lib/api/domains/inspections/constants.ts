@@ -28,6 +28,10 @@ export const QUERY_KEYS = {
       ["trpc", "inspection", "getByClaim"],
       { input: { claim_id: claimId }, type: "query" }
     ],
+    GET_BY_ID: (id: string) => [
+      ["trpc", "inspection", "getById"],
+      { input: { id }, type: "query" }
+    ],
   }
 };
 

@@ -117,7 +117,8 @@ function SelectItem({
           <CheckIcon className="size-4" />
         </SelectPrimitive.ItemIndicator>
       </span>
-      <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+      {/* Wrap children directly instead of using SelectPrimitive.ItemText to avoid key warnings */}
+      <span className="select-item-text">{children}</span>
     </SelectPrimitive.Item>
   )
 }

@@ -4,7 +4,7 @@ import { apiClient } from "@/lib/api/client";
 import { useQueryState } from "@/lib/api/hooks";
 import { inspectionMutations } from "./mutations";
 import { QUERY_KEYS, INSPECTION_CACHE_TIMES } from "./constants";
-import { type Inspection } from "./types";
+import { type Inspection, type InspectionUpdateInput } from "./types";
 import { QUERY_KEYS as CLAIM_QUERY_KEYS } from "@/lib/api/domains/claims/constants";
 
 /**
@@ -97,6 +97,37 @@ export function useRecordInspection() {
 
       queryClient.invalidateQueries({
         queryKey: CLAIM_QUERY_KEYS.counts(),
+      });
+    },
+  });
+}
+
+/**
+ * Hook for updating an inspection
+ * @returns Mutation object for updating an inspection
+ */
+export function useUpdateInspection() {
+  const queryClient = useQueryClient();
+
+  return inspectionMutations.updateInspection({
+    onSuccess: (data) => {
+      // Invalidate relevant queries
+      queryClient.invalidateQueries({
+        queryKey: QUERY_KEYS.byClaim(data.claim_id),
+      });
+
+      // Invalidate claim queries to reflect updated status
+      queryClient.invalidateQueries({
+        queryKey: CLAIM_QUERY_KEYS.detail(data.claim_id),
+      });
+
+      queryClient.invalidateQueries({
+        queryKey: CLAIM_QUERY_KEYS.summary(data.claim_id),
+      });
+
+      // Invalidate claim lists that might contain this claim
+      queryClient.invalidateQueries({
+        queryKey: CLAIM_QUERY_KEYS.lists(),
       });
     },
   });

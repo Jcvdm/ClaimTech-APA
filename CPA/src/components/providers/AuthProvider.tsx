@@ -5,10 +5,10 @@ import { useAuthStore } from "@/stores/authStore";
 
 // Mock user for development - in production, this would come from an API call
 const MOCK_USER = {
-  id: "mock-user-id",
-  email: "dev@example.com",
+  id: "fb0c14a7-550a-4d41-90f4-86d714961f87", // Match the ID used in tRPC context
+  email: "dev-user@example.com",
   name: "Development User",
-  role: "admin",
+  role: "authenticated",
 };
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {

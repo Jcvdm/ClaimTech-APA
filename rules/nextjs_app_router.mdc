@@ -1,0 +1,117 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+ # Next.js App Router Guidelines
+
+## Purpose
+Robust React framework, core of T3, excellent integration with Vercel, supports SSR/SSG/ISR. The App Router provides modern features like layouts, server components, and improved data fetching.
+
+## Key Concepts & Usage
+
+*   **File-based Routing:** Folders define routes. `page.tsx` defines UI, `layout.tsx` defines shared UI.
+*   **Server Components:** Default in App Router. Fetch data directly, run server-side only.
+*   **Client Components:** Opt-in with `'use client'` directive. Necessary for hooks (`useState`, `useEffect`) and event listeners.
+*   **Layouts:** Shared UI wrapping child layouts or pages. Root Layout (`app/layout.tsx`) is mandatory.
+*   **Data Fetching:** Use `async/await` in Server Components with `fetch`. Leverage `revalidate` options for ISR.
+*   **Dynamic Routes:** Use brackets `[folderName]` for dynamic segments.
+*   **Metadata:** Define in `layout.tsx` or `page.tsx` using `metadata` object or `generateMetadata` function.
+
+## Examples
+
+### Basic Page Component
+```tsx
+// app/dashboard/page.tsx
+import Link from 'next/link'
+
+export default function Page() {
+  return (
+    <div>
+      <h1>Dashboard Home</h1>
+      <Link href="/dashboard/settings">Settings</Link>
+    </div>
+  )
+}
+```
+
+### Root Layout with Tailwind
+```tsx
+// app/layout.tsx
+import type { Metadata } from 'next'
+import './globals.css' // Import Tailwind global styles
+
+export const metadata: Metadata = {
+  title: 'T3 Supabase Dashboard',
+  description: 'Generated for project',
+}
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  return (
+    <html lang="en">
+      <body>{children}</body>
+    </html>
+  )
+}
+```
+
+### Data Fetching with ISR (Time-based Revalidation)
+```tsx
+// app/posts/page.tsx
+interface Post {
+  id: string
+  title: string
+}
+
+// Revalidate this page every hour
+export const revalidate = 3600
+
+async function getPosts(): Promise<Post[]> {
+  // Replace with actual API call (e.g., tRPC/Supabase)
+  const res = await fetch('https://api.example.com/posts', {
+    next: { revalidate: 3600 }, // Can also set revalidate here
+  })
+  if (!res.ok) {
+    throw new Error('Failed to fetch posts')
+  }
+  return res.json()
+}
+
+export default async function PostsPage() {
+  const posts = await getPosts()
+
+  return (
+    <main>
+      <h1>Blog Posts</h1>
+      <ul>
+        {posts.map((post) => (
+          <li key={post.id}>{post.title}</li>
+        ))}
+      </ul>
+    </main>
+  )
+}
+```
+
+### Client Component Example
+```tsx
+// app/components/Counter.tsx
+'use client'
+
+import { useState } from 'react'
+
+export function Counter() {
+  const [count, setCount] = useState(0)
+
+  return (
+    <div>
+      <p>You clicked {count} times</p>
+      <button onClick={() => setCount(count + 1)}>Click me</button>
+    </div>
+  )
+}
+```

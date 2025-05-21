@@ -25,15 +25,15 @@ import {
   SidebarMenuBadge,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { useServerCounts } from "./useServerCounts";
+import { useHybridClaimCounts } from "@/lib/api/domains/claims";
 
 export function AppSidebar() {
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
   const pathname = usePathname();
 
-  // Use the server-provided counts
-  const counts = useServerCounts();
+  // Use the hybrid approach that combines server-rendered counts with client-side updates
+  const counts = useHybridClaimCounts();
 
   const navItems = [
     {

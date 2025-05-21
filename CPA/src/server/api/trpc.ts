@@ -63,6 +63,12 @@ export const createTRPCContext = async (opts: { headers: Headers, request?: Next
         role: 'authenticated'
       };
 
+      console.log("[tRPC Context] Created mock user for development:", {
+        userId: user.id,
+        email: user.email,
+        name: user.user_metadata.name
+      });
+
       // For development, let's modify the RLS policy to allow all operations
       // This is a workaround for local development only
       try {
@@ -73,6 +79,30 @@ export const createTRPCContext = async (opts: { headers: Headers, request?: Next
         // Also create a policy for appointments table
         await supabase.rpc('create_dev_policy_for_appointments');
         console.log('Created development policy for appointments table');
+
+        // Create policy for vehicle inspections table
+        try {
+          await supabase.rpc('create_dev_policy_for_vehicle_inspections');
+          console.log('Created development policy for vehicle inspections table');
+        } catch (inspectionPolicyError) {
+          console.warn('Failed to create vehicle inspections policy (may not exist yet):', inspectionPolicyError);
+        }
+
+        // Create policy for estimates table
+        try {
+          await supabase.rpc('create_dev_policy_for_estimates');
+          console.log('Created development policy for estimates table');
+        } catch (estimatesPolicyError) {
+          console.warn('Failed to create estimates policy (may not exist yet):', estimatesPolicyError);
+        }
+
+        // Create policy for estimate_lines table
+        try {
+          await supabase.rpc('create_dev_policy_for_estimate_lines');
+          console.log('Created development policy for estimate_lines table');
+        } catch (estimateLinesPolicyError) {
+          console.warn('Failed to create estimate_lines policy (may not exist yet):', estimateLinesPolicyError);
+        }
       } catch (policyError) {
         console.warn('Failed to create development policy:', policyError);
         // Continue without policies - they might already exist
@@ -117,6 +147,12 @@ export const createTRPCContext = async (opts: { headers: Headers, request?: Next
         email: 'dev-user@example.com',
         role: 'authenticated'
       };
+
+      console.log("[tRPC Context] Created fallback mock user after error:", {
+        userId: user.id,
+        email: user.email,
+        name: user.user_metadata.name
+      });
     }
   }
 
@@ -210,10 +246,19 @@ export const publicProcedure = t.procedure.use(timingMiddleware);
  *
  * @see https://trpc.io/docs/server/middlewares
  */
-const enforceUserIsAuthed = t.middleware(({ ctx, next }) => {
+const enforceUserIsAuthed = t.middleware(({ ctx, next, path }) => {
+  console.log(`[tRPC Auth] Checking auth for procedure: ${path}`);
+
   if (!ctx.user) {
+    console.error(`[tRPC Auth] No user found in context for procedure: ${path}`);
     throw new Error("UNAUTHORIZED: User must be logged in to access this resource");
   }
+
+  console.log(`[tRPC Auth] User authenticated for procedure: ${path}`, {
+    userId: ctx.user.id,
+    email: ctx.user.email
+  });
+
   return next({
     ctx: {
       // Infers the `user` as non-nullable

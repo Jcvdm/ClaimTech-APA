@@ -12,31 +12,58 @@ import { CACHE_TIMES } from "@/lib/api/domains/claims/constants";
 
 /**
  * Hook for fetching appointments by claim ID
+ * @param claimId The ID of the claim to fetch appointments for
+ * @param options Additional options for controlling the query
+ * @returns Query result with appointments data
  */
-export function useAppointmentsByClaim(claimId: string | null | undefined) {
+export function useAppointmentsByClaim(
+  claimId: string | null | undefined,
+  options?: {
+    enabled?: boolean;
+    staleTime?: number;
+    forceRefresh?: boolean;
+  }
+) {
   // Check if data is already in the cache
   const queryClient = useQueryClient();
   const queryKey = ['appointment', 'getByClaim', { claim_id: claimId }];
   const cachedData = queryClient.getQueryData<Appointment[]>(queryKey);
 
-  // If we have cached data and a valid claimId, we can use the cached data
-  // and avoid unnecessary refetches
-  const shouldFetch = !!claimId && !cachedData;
+  // Determine if we should fetch data
+  // - If enabled is explicitly set, use that value
+  // - Otherwise, fetch if we have a valid claimId
+  // - If forceRefresh is true, always fetch regardless of cache
+  const shouldFetch = options?.enabled !== undefined
+    ? options.enabled
+    : (!!claimId && (options?.forceRefresh || !cachedData));
 
   // Log cache status for debugging
-  if (claimId && cachedData) {
-    console.log(`[Cache] Using cached appointments data for claim ${claimId}`);
+  if (claimId) {
+    if (cachedData) {
+      console.log(`[Cache] Using cached appointments data for claim ${claimId} (${cachedData.length} appointments)`);
+    } else if (shouldFetch) {
+      console.log(`[Cache] No cached appointments data for claim ${claimId}, fetching from server`);
+    } else {
+      console.log(`[Cache] No cached appointments data for claim ${claimId}, but not fetching (disabled)`);
+    }
   }
 
   return useQueryState(() =>
     apiClient.query<Appointment[]>(
       () => apiClient.raw.appointment.getByClaim.useQuery({ claim_id: claimId || '' }),
       {
-        // Only fetch if we don't have cached data
         enabled: shouldFetch,
-        staleTime: CACHE_TIMES.ACTIVE_SESSION.STALE_TIME, // 60 minutes - use active session time
-        refetchOnWindowFocus: false, // Don't refetch on window focus
-        refetchInterval: undefined // Don't automatically refetch
+        staleTime: options?.staleTime !== undefined
+          ? options.staleTime
+          : CACHE_TIMES.ACTIVE_SESSION.STALE_TIME,
+        refetchOnWindowFocus: false,
+        refetchInterval: undefined,
+        onSuccess: (data) => {
+          console.log(`[Query] Successfully fetched ${data.length} appointments for claim ${claimId}`);
+        },
+        onError: (error) => {
+          console.error(`[Query] Error fetching appointments for claim ${claimId}:`, error);
+        }
       }
     )
   );

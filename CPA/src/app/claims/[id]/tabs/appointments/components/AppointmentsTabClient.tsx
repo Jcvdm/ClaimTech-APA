@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { type Appointment, useAppointmentsByClaim } from "@/lib/api/domains/appointments";
 import { type ClaimDetails } from "@/lib/api/domains/claims/types";
 import { formatDate, formatTime } from "@/lib/utils";
-import { CalendarIcon, MapPinIcon, ClockIcon, UserIcon, PhoneIcon, AlertTriangle } from "lucide-react";
+import { CalendarIcon, MapPinIcon, ClockIcon, UserIcon, PhoneIcon, AlertTriangle, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -12,6 +12,7 @@ import AppointmentFormWrapper from "./AppointmentFormWrapper.client";
 import AppointmentEditButton from "./AppointmentEditButton";
 import AppointmentActions from "./AppointmentActions";
 import { useQueryClient } from '@tanstack/react-query';
+import AppointmentTabSkeleton from "./AppointmentTabSkeleton";
 
 interface AppointmentsTabClientProps {
   appointmentsData?: Appointment[] | null;
@@ -23,17 +24,50 @@ export default function AppointmentsTabClient({
   claim
 }: AppointmentsTabClientProps) {
   const queryClient = useQueryClient();
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
   // Check if we have valid data
   const hasValidClaimData = !!claim && !!claim.id;
 
-  // Use the hook to fetch appointments data
-  const { data: fetchedAppointments, refetch } = useAppointmentsByClaim(
-    hasValidClaimData ? claim.id : null
+  // Log server-provided data for debugging
+  useEffect(() => {
+    if (hasValidClaimData) {
+      console.log(`[AppointmentsTabClient] Claim ID: ${claim.id}`);
+      console.log(`[AppointmentsTabClient] Server-provided appointments:`, appointmentsData);
+    }
+  }, [claim, appointmentsData, hasValidClaimData]);
+
+  // Use the hook to fetch appointments data, always fetch fresh data on mount
+  const { data: fetchedAppointments, refetch, isLoading, isError, error } = useAppointmentsByClaim(
+    hasValidClaimData ? claim.id : null,
+    {
+      enabled: hasValidClaimData,
+      staleTime: 0, // Always consider data stale to force a refresh
+      forceRefresh: true // Always fetch fresh data
+    }
   );
+
+  // Log fetched data for debugging
+  useEffect(() => {
+    if (hasValidClaimData && fetchedAppointments) {
+      console.log(`[AppointmentsTabClient] Client-fetched appointments:`, fetchedAppointments);
+    }
+
+    // Set initial load to false after first render
+    if (isLoading === false) {
+      setIsInitialLoad(false);
+    }
+  }, [fetchedAppointments, hasValidClaimData, isLoading]);
 
   // Use fetched data if available, otherwise use the server-provided data
   const appointments = fetchedAppointments || appointmentsData;
+
+  // Log combined data for debugging
+  useEffect(() => {
+    if (hasValidClaimData) {
+      console.log(`[AppointmentsTabClient] Combined appointments:`, appointments);
+    }
+  }, [appointments, hasValidClaimData]);
 
   // Check if we have appointments
   const hasAppointments = Array.isArray(appointments) && appointments.length > 0;
@@ -61,6 +95,11 @@ export default function AppointmentsTabClient({
     }
   };
 
+  // Show loading state during initial load
+  if (isLoading && isInitialLoad) {
+    return <AppointmentTabSkeleton />;
+  }
+
   // If there's an error with the claim data, show an error message
   if (!hasValidClaimData) {
     return (
@@ -76,6 +115,21 @@ export default function AppointmentsTabClient({
     );
   }
 
+  // If there's an error fetching appointments, show an error message
+  if (isError) {
+    return (
+      <div className="space-y-6">
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>
+            There was a problem loading appointments: {error?.message || "Unknown error"}
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Appointment Form Wrapper */}
@@ -85,7 +139,12 @@ export default function AppointmentsTabClient({
       />
 
       {/* Appointments List */}
-      {!hasAppointments ? (
+      {isLoading ? (
+        <div className="flex items-center space-x-2">
+          <Loader2 className="h-5 w-5 animate-spin text-primary" />
+          <span className="text-sm text-muted-foreground">Loading appointments...</span>
+        </div>
+      ) : !hasAppointments ? (
         <div className="space-y-4">
           <h2 className="text-xl font-semibold">Appointments</h2>
           <p className="text-muted-foreground">No appointments scheduled</p>

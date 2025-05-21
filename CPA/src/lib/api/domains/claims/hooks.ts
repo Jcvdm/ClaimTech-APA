@@ -229,6 +229,86 @@ export function useCreateClaim() {
 }
 
 /**
+ * Hook for creating a claim with vehicle in a single transaction
+ * This is the preferred way to create a claim as it ensures atomicity
+ */
+export function useCreateClaimWithVehicle() {
+  const queryClient = useQueryClient();
+
+  return claimMutations.createClaimWithVehicle({
+    // Implement optimistic updates for claim counts
+    onMutate: async (newClaimData) => {
+      // Cancel any outgoing refetches to avoid overwriting our optimistic update
+      await queryClient.cancelQueries({ queryKey: getQueryKey(apiClient.raw.claim.getCounts) });
+
+      // Get the current counts from the cache
+      const previousCounts = queryClient.getQueryData(getQueryKey(apiClient.raw.claim.getCounts));
+
+      // Optimistically update the counts
+      if (previousCounts) {
+        queryClient.setQueryData(
+          getQueryKey(apiClient.raw.claim.getCounts),
+          (oldData: any) => {
+            if (!oldData) return oldData;
+
+            // Determine which count to increment based on the claim's status
+            const status = newClaimData.claim.status || 'New';
+
+            // Create a copy of the old data
+            const newData = { ...oldData };
+
+            // Increment the appropriate count
+            if (['New', 'Appointed', 'In Progress', 'Report Sent', 'Authorized'].includes(status)) {
+              newData.active = (newData.active || 0) + 1;
+            } else if (['FRC Requested', 'FRC Active'].includes(status)) {
+              newData.frc = (newData.frc || 0) + 1;
+            } else if (status === 'FRC Finalized') {
+              newData.finalized = (newData.finalized || 0) + 1;
+              newData.history = (newData.history || 0) + 1;
+            } else if (status === 'Canceled') {
+              newData.history = (newData.history || 0) + 1;
+            }
+
+            return newData;
+          }
+        );
+      }
+
+      // Return the previous counts so we can roll back if needed
+      return { previousCounts };
+    },
+
+    onSuccess: (data) => {
+      // Invalidate relevant queries to ensure UI is updated
+      queryClient.invalidateQueries({ queryKey: getQueryKey(apiClient.raw.claim.list) });
+      queryClient.invalidateQueries({ queryKey: getQueryKey(apiClient.raw.claim.getCounts) });
+
+      // Set a flag to force refresh on the claims list page
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('forceClaimsRefresh', Date.now().toString());
+
+        // Dispatch event for any listeners
+        window.dispatchEvent(new CustomEvent('claimCreated', {
+          detail: { claimId: data.id }
+        }));
+      }
+    },
+
+    onError: (error, variables, context: any) => {
+      // If the mutation fails, roll back to the previous counts
+      if (context?.previousCounts) {
+        queryClient.setQueryData(
+          getQueryKey(apiClient.raw.claim.getCounts),
+          context.previousCounts
+        );
+      }
+
+      console.error('Error creating claim with vehicle:', error);
+    }
+  });
+}
+
+/**
  * Hook for updating a claim with cache invalidation
  */
 export function useUpdateClaim() {
@@ -267,19 +347,79 @@ export function useOptimisticUpdateClaimStatus() {
         queryKey: getQueryKey(apiClient.raw.claim.getById, { id: variables.id })
       });
 
-      // Snapshot the previous value
+      await queryClient.cancelQueries({
+        queryKey: getQueryKey(apiClient.raw.claim.getCounts)
+      });
+
+      // Snapshot the previous values
       const previousClaim = queryClient.getQueryData(
         getQueryKey(apiClient.raw.claim.getById, { id: variables.id })
       );
 
-      // Optimistically update to the new value
+      const previousCounts = queryClient.getQueryData(
+        getQueryKey(apiClient.raw.claim.getCounts)
+      );
+
+      // Get the current status before the update
+      const currentStatus = (previousClaim as any)?.status;
+
+      // Optimistically update the claim to the new value
       queryClient.setQueryData(
         getQueryKey(apiClient.raw.claim.getById, { id: variables.id }),
         (old: any) => old ? { ...old, status: variables.status } : undefined
       );
 
-      // Return a context object with the snapshot
-      return { previousClaim };
+      // Optimistically update the counts if we have both the current status and the counts
+      if (currentStatus && previousCounts) {
+        queryClient.setQueryData(
+          getQueryKey(apiClient.raw.claim.getCounts),
+          (oldData: any) => {
+            if (!oldData) return oldData;
+
+            // Create a copy of the old data
+            const newData = { ...oldData };
+
+            // Helper function to determine which category a status belongs to
+            const getCategory = (status: string) => {
+              if (['New', 'Appointed', 'In Progress', 'Report Sent', 'Authorized'].includes(status)) {
+                return 'active';
+              } else if (['FRC Requested', 'FRC Active'].includes(status)) {
+                return 'frc';
+              } else if (status === 'FRC Finalized') {
+                return 'finalized';
+              } else if (status === 'Canceled') {
+                return 'history';
+              }
+              return null;
+            };
+
+            // Decrement the count for the old category
+            const oldCategory = getCategory(currentStatus);
+            if (oldCategory && newData[oldCategory] > 0) {
+              newData[oldCategory] = newData[oldCategory] - 1;
+            }
+
+            // Increment the count for the new category
+            const newCategory = getCategory(variables.status);
+            if (newCategory) {
+              newData[newCategory] = (newData[newCategory] || 0) + 1;
+            }
+
+            // Special case for history category which includes both FRC Finalized and Canceled
+            if (variables.status === 'FRC Finalized' || variables.status === 'Canceled') {
+              newData.history = (newData.history || 0) + 1;
+            }
+            if (currentStatus === 'FRC Finalized' || currentStatus === 'Canceled') {
+              newData.history = Math.max(0, (newData.history || 0) - 1);
+            }
+
+            return newData;
+          }
+        );
+      }
+
+      // Return a context object with the snapshots
+      return { previousClaim, previousCounts };
     },
 
     // If the mutation fails, use the context returned from onMutate to roll back
@@ -288,6 +428,14 @@ export function useOptimisticUpdateClaimStatus() {
         getQueryKey(apiClient.raw.claim.getById, { id: variables.id }),
         context?.previousClaim
       );
+
+      if (context?.previousCounts) {
+        queryClient.setQueryData(
+          getQueryKey(apiClient.raw.claim.getCounts),
+          context.previousCounts
+        );
+      }
+
       toast.error(`Failed to update claim status: ${err.message}`);
     },
 

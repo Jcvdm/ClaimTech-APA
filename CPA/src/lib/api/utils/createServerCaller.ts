@@ -44,7 +44,20 @@ export const createServerCaller = cache(async () => {
         // Provide a minimal mock Supabase client with required methods
         supabase: {
           auth: {
-            getUser: async () => ({ data: { user: null }, error: null }),
+            getUser: async () => ({
+              data: {
+                user: {
+                  id: 'fb0c14a7-550a-4d41-90f4-86d714961f87',
+                  app_metadata: { provider: 'email' },
+                  user_metadata: { name: 'Development User' },
+                  aud: 'authenticated',
+                  created_at: new Date().toISOString(),
+                  email: 'dev-user@example.com',
+                  role: 'authenticated'
+                }
+              },
+              error: null
+            }),
           },
           from: () => ({
             select: () => ({
@@ -58,8 +71,8 @@ export const createServerCaller = cache(async () => {
           }),
           rpc: () => ({ data: null, error: null }),
         },
-        // Mock user for development
-        user: process.env.NODE_ENV === 'development' ? {
+        // Always set the user for development
+        user: {
           id: 'fb0c14a7-550a-4d41-90f4-86d714961f87',
           app_metadata: { provider: 'email' },
           user_metadata: { name: 'Development User' },
@@ -67,7 +80,7 @@ export const createServerCaller = cache(async () => {
           created_at: new Date().toISOString(),
           email: 'dev-user@example.com',
           role: 'authenticated'
-        } : null,
+        },
       };
     }
 

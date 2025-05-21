@@ -1,0 +1,53 @@
+---
+description: Schema Consistency Guidelines
+globs: ["CPA/src/server/api/routers/*.ts", "CPA/src/lib/api/domains/**/*.ts"]
+alwaysApply: true
+---
+# Schema Consistency Guidelines
+
+## Core Principles
+
+1. **Single Source of Truth**: Database schema is the single source of truth for column names and data types.
+2. **Consistent Naming**: Use the exact same column names in code as in the database.
+3. **Validation Alignment**: Ensure validation rules in Zod schemas match database constraints.
+4. **Relationship Accuracy**: Code should accurately reflect the relationships defined in the database.
+
+## Common Pitfalls to Avoid
+
+1. **Column Name Mismatches**: 
+   - ❌ `assigned_to_employee_id` in code vs `assigned_employee_id` in database
+   - ✅ Use the exact column name from the database in all code
+
+2. **Incorrect Relationships**:
+   - ❌ Adding `client_id` to vehicles when vehicles are only related to claims
+   - ✅ Follow the relationship paths defined in the database schema
+
+3. **Inconsistent Validation**:
+   - ❌ Different validation rules between frontend and backend
+   - ✅ Define validation rules once and reuse them
+
+## Best Practices
+
+1. **Check Database Schema First**: Before implementing new features, verify the actual database schema.
+2. **Use Schema Introspection**: Consider generating types from the database schema.
+3. **Document Relationships**: Maintain clear documentation of entity relationships.
+4. **Validate Early**: Add validation as close to the data source as possible.
+
+## Specific Guidelines
+
+### Vehicles Table
+- No direct relationship to clients (only to claims)
+- No unique constraints on VIN or registration_number
+- Make is required
+- At least one identifier (VIN, registration, engine number) is required
+
+### Claims Table
+- Uses `assigned_employee_id` (not `assigned_to_employee_id`)
+- Has a required relationship to both client and vehicle
+- Date of loss is required
+
+### When Adding New Fields
+1. First add the column to the database
+2. Then update the Zod schemas
+3. Finally update the UI components
+4. Verify the entire flow works end-to-end

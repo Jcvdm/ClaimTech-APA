@@ -18,13 +18,14 @@ import { prefetchVehicleServer } from "@/lib/api/domains/vehicles/server-prefetc
 import { prefetchClientServer } from "@/lib/api/domains/clients/server-prefetch.server";
 import { prefetchProvincesServer, prefetchLossAdjustersServer } from "@/lib/api/domains/lookups/server-prefetch.server";
 import { prefetchInspectionsByClaimServer } from "@/lib/api/domains/inspections/server-prefetch.server";
+import { prefetchClaimLogsServer } from "@/lib/api/domains/logs/server-prefetch.server";
 
 // Tab components
 import TabContainer from "./TabContainer.client";
 import OverviewTab from "./tabs/overview/OverviewTab";
 import AppointmentsTab from "./tabs/appointments/AppointmentsTab";
 import InspectionTab from "./tabs/inspection/InspectionTab";
-import ThreeSixtyTab from "./tabs/threesixty/ThreeSixtyTab";
+
 import EstimateTab from "./tabs/estimate/EstimateTab";
 import PreIncidentTab from "./tabs/preincident/PreIncidentTab";
 
@@ -48,9 +49,12 @@ export default async function ClaimDetailsPage({ params }: { params: { id: strin
     notFound();
   }
 
-  // Prefetch inspection data
-  const inspectionsData = await prefetchInspectionsByClaimServer(id);
-  console.log(`[ClaimDetailsPage] Prefetched ${inspectionsData.length} inspections for claim ${id}`);
+  // Prefetch inspection data and logs
+  const [inspectionsData, logsData] = await Promise.all([
+    prefetchInspectionsByClaimServer(id),
+    prefetchClaimLogsServer(id, 20) // Prefetch logs with a limit of 20
+  ]);
+  console.log(`[ClaimDetailsPage] Prefetched ${inspectionsData.length} inspections and ${logsData.length} logs for claim ${id}`);
 
   // All related data is now included in the claimData object
   const {
@@ -87,13 +91,7 @@ export default async function ClaimDetailsPage({ params }: { params: { id: strin
         </Suspense>
       </ErrorBoundary>
     ),
-    threesixty: (
-      <ErrorBoundary fallback={<div>Error loading 360° view</div>}>
-        <Suspense fallback={<div>Loading 360° view...</div>}>
-          <ThreeSixtyTab />
-        </Suspense>
-      </ErrorBoundary>
-    ),
+
     estimate: (
       <ErrorBoundary fallback={<div>Error loading estimate</div>}>
         <Suspense fallback={<div>Loading estimate...</div>}>
@@ -145,7 +143,8 @@ export default async function ClaimDetailsPage({ params }: { params: { id: strin
           attachments: attachmentsData,
           vehicle: vehicleData,
           client: clientData,
-          inspections: inspectionsData
+          inspections: inspectionsData,
+          logs: logsData
         }}
       />
     </div>

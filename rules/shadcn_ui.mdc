@@ -1,0 +1,111 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Shadcn/UI Guidelines
+
+## Purpose
+Modern, accessible, unstyled components built with Radix UI & Tailwind. Copy-paste integration keeps dependencies minimal and allows full customization. Essential for the requested layout and reusability.
+
+## Key Concepts & Usage
+
+*   **Not a Library:** It's a collection of reusable components you copy into your codebase.
+*   **Installation:** Use the CLI `npx shadcn-ui@latest add [component]` to add components. This copies the source code to `src/components/ui` (or your configured path).
+*   **Customization:** Modify the component source code directly or configure `tailwind.config.js` and `globals.css` (CSS variables).
+*   **Composition:** Build feature-specific components (`src/components/shared`, `src/components/layout`) by composing these UI primitives.
+*   **Dependencies:** Relies on `tailwindcss-animate`, `class-variance-authority`, `clsx`, `tailwind-merge`, and `lucide-react` (or another icon library).
+*   **Utilities:** Use the `cn` utility function (created during init) to merge Tailwind classes conditionally.
+
+## Examples
+
+### Initializing Shadcn/UI
+```bash
+npx shadcn-ui@latest init
+# Follow CLI prompts to configure paths, styles, base color etc.
+```
+
+### Adding a Component (e.g., Button)
+```bash
+npx shadcn-ui@latest add button
+```
+
+### Using a Component (e.g., Button)
+```tsx
+// src/app/page.tsx
+import { Button } from "@/components/ui/button"
+
+export default function Home() {
+  return (
+    <div>
+      <Button variant="outline" size="lg">Click me</Button>
+    </div>
+  )
+}
+```
+
+### Basic Card Component
+```tsx
+// src/components/shared/InfoCard.tsx
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+
+interface InfoCardProps {
+  title: string;
+  description?: string;
+  content: React.ReactNode;
+  footer?: React.ReactNode;
+}
+
+export function InfoCard({ title, description, content, footer }: InfoCardProps) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        {description && <CardDescription>{description}</CardDescription>}
+      </CardHeader>
+      <CardContent>{content}</CardContent>
+      {footer && <CardFooter>{footer}</CardFooter>}
+    </Card>
+  )
+}
+```
+
+### Using the `cn` Utility
+```typescript
+// src/lib/utils.ts (Created by shadcn init)
+import { type ClassValue, clsx } from "clsx"
+import { twMerge } from "tailwind-merge"
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
+```
+
+```tsx
+// Example usage in a component
+import { cn } from "@/lib/utils"
+
+interface MyComponentProps {
+  isActive: boolean;
+  className?: string;
+}
+
+export function MyComponent({ isActive, className }: MyComponentProps) {
+  return (
+    <div className={cn(
+      "p-4 border rounded",
+      isActive ? "bg-blue-100 border-blue-300" : "bg-gray-100",
+      className // Allow external classes
+    )}>
+      {/* ... content ... */}
+    </div>
+  )
+}
+``` 
