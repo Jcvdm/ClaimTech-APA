@@ -1,6 +1,6 @@
 // src/server/api/routers/estimate.ts
 import { z } from "zod";
-import { createTRPCRouter, publicProcedure, protectedProcedure } from "@/server/api/trpc";
+import { createTRPCRouter, protectedProcedure, rateLimitedProcedure, readOnlyRateLimitedProcedure } from "@/server/api/trpc";
 import {
   EstimateCreateSchema,
   EstimateOutputSchema,
@@ -12,11 +12,34 @@ import { TRPCError } from "@trpc/server";
 
 export const estimateRouter = createTRPCRouter({
   // Get estimate by claim ID
-  getByClaimId: publicProcedure
+  getByClaimId: readOnlyRateLimitedProcedure
     .input(z.object({ claim_id: z.string().uuid() }))
     .output(EstimateOutputSchema.nullable())
     .query(async ({ ctx, input }) => {
       try {
+        // First verify claim ownership through the claims table
+        const { data: claimData, error: claimError } = await ctx.supabase
+          .from("claims")
+          .select("id, created_by_employee_id")
+          .eq("id", input.claim_id)
+          .eq("created_by_employee_id", ctx.user.id)
+          .single();
+
+        if (claimError) {
+          if (claimError.code === "PGRST116") {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Claim not found or access denied",
+            });
+          }
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to verify claim ownership: ${claimError.message}`,
+            cause: claimError,
+          });
+        }
+
+        // Now fetch the estimate for this claim
         const { data, error } = await ctx.supabase
           .from("estimates")
           .select("*")
@@ -39,24 +62,44 @@ export const estimateRouter = createTRPCRouter({
 
         return data;
       } catch (error) {
+        if (error instanceof TRPCError) {
+          throw error;
+        }
         console.error("Error fetching estimate:", error);
-        throw error;
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "An unexpected error occurred",
+        });
       }
     }),
 
   // Get estimate by ID
-  getById: publicProcedure
+  getById: readOnlyRateLimitedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .output(EstimateOutputSchema)
     .query(async ({ ctx, input }) => {
       try {
+        // Fetch estimate with claim ownership verification
         const { data, error } = await ctx.supabase
           .from("estimates")
-          .select("*")
+          .select(`
+            *,
+            claims!inner(
+              id,
+              created_by_employee_id
+            )
+          `)
           .eq("id", input.id)
+          .eq("claims.created_by_employee_id", ctx.user.id)
           .single();
 
         if (error) {
+          if (error.code === "PGRST116") {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Estimate not found or access denied",
+            });
+          }
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
             message: `Failed to fetch estimate: ${error.message}`,
@@ -66,20 +109,23 @@ export const estimateRouter = createTRPCRouter({
 
         return data;
       } catch (error) {
+        if (error instanceof TRPCError) {
+          throw error;
+        }
         console.error("Error fetching estimate:", error);
-        throw error;
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "An unexpected error occurred",
+        });
       }
     }),
 
   // Create a new estimate
-  create: protectedProcedure
+  create: rateLimitedProcedure
     .input(EstimateCreateSchema)
     .output(EstimateOutputSchema)
     .mutation(async ({ ctx, input }) => {
       try {
-        console.log("[estimateRouter] Creating estimate with input:", input);
-        console.log("[estimateRouter] User context:", ctx.user);
-
         // Ensure markup percentages have default values
         const estimateData = {
           ...input,
@@ -90,8 +136,6 @@ export const estimateRouter = createTRPCRouter({
           version: 1,
         };
 
-        console.log("[estimateRouter] Prepared estimate data:", estimateData);
-
         // Start a transaction
         const { data, error } = await ctx.supabase
           .from("estimates")
@@ -100,7 +144,6 @@ export const estimateRouter = createTRPCRouter({
           .single();
 
         if (error) {
-          console.error("[estimateRouter] Supabase error:", error);
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
             message: `Failed to create estimate: ${error.message}`,
@@ -108,20 +151,54 @@ export const estimateRouter = createTRPCRouter({
           });
         }
 
-        console.log("[estimateRouter] Estimate created successfully:", data);
         return data;
       } catch (error) {
-        console.error("[estimateRouter] Error creating estimate:", error);
-        throw error;
+        if (error instanceof TRPCError) {
+          throw error;
+        }
+        console.error("Error creating estimate:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "An unexpected error occurred",
+        });
       }
     }),
 
   // Get estimate lines by estimate ID
-  getLinesByEstimateId: publicProcedure
+  getLinesByEstimateId: readOnlyRateLimitedProcedure
     .input(z.object({ estimate_id: z.string().uuid() }))
     .output(z.array(EstimateLineOutputSchema))
     .query(async ({ ctx, input }) => {
       try {
+        // First verify estimate ownership through claims
+        const { data: estimateData, error: estimateError } = await ctx.supabase
+          .from("estimates")
+          .select(`
+            id,
+            claims!inner(
+              id,
+              created_by_employee_id
+            )
+          `)
+          .eq("id", input.estimate_id)
+          .eq("claims.created_by_employee_id", ctx.user.id)
+          .single();
+
+        if (estimateError) {
+          if (estimateError.code === "PGRST116") {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Estimate not found or access denied",
+            });
+          }
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to verify estimate ownership: ${estimateError.message}`,
+            cause: estimateError,
+          });
+        }
+
+        // Now fetch the estimate lines
         const { data, error } = await ctx.supabase
           .from("estimate_lines")
           .select("*")
@@ -138,13 +215,19 @@ export const estimateRouter = createTRPCRouter({
 
         return data || [];
       } catch (error) {
+        if (error instanceof TRPCError) {
+          throw error;
+        }
         console.error("Error fetching estimate lines:", error);
-        throw error;
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "An unexpected error occurred",
+        });
       }
     }),
 
   // Create a new estimate line
-  createLine: protectedProcedure
+  createLine: rateLimitedProcedure
     .input(EstimateLineCreateSchema)
     .output(EstimateLineOutputSchema)
     .mutation(async ({ ctx, input }) => {
@@ -203,7 +286,7 @@ export const estimateRouter = createTRPCRouter({
     }),
 
   // Update an estimate line
-  updateLine: protectedProcedure
+  updateLine: rateLimitedProcedure
     .input(EstimateLineUpdateSchema)
     .output(EstimateLineOutputSchema)
     .mutation(async ({ ctx, input }) => {
@@ -236,7 +319,7 @@ export const estimateRouter = createTRPCRouter({
     }),
 
   // Delete an estimate line
-  deleteLine: protectedProcedure
+  deleteLine: rateLimitedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       try {
@@ -274,6 +357,206 @@ export const estimateRouter = createTRPCRouter({
       } catch (error) {
         console.error("Error deleting estimate line:", error);
         throw error;
+      }
+    }),
+
+  // Bulk operations for estimate lines
+  bulkCreateLines: rateLimitedProcedure
+    .input(z.object({
+      estimate_id: z.string().uuid(),
+      lines: z.array(EstimateLineCreateSchema.omit({ estimate_id: true })).max(50) // Limit to 50 lines per batch
+    }))
+    .output(z.object({
+      success: z.boolean(),
+      created: z.array(EstimateLineOutputSchema),
+      errors: z.array(z.object({
+        index: z.number(),
+        error: z.string()
+      }))
+    }))
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const created: any[] = [];
+        const errors: { index: number; error: string }[] = [];
+
+        // Process each line
+        for (let i = 0; i < input.lines.length; i++) {
+          try {
+            const lineData = { ...input.lines[i], estimate_id: input.estimate_id };
+            
+            // Get the next sequence number if not provided
+            if (!lineData.sequence_number) {
+              const { data: maxSeq } = await ctx.supabase
+                .from("estimate_lines")
+                .select("sequence_number")
+                .eq("estimate_id", input.estimate_id)
+                .order("sequence_number", { ascending: false })
+                .limit(1)
+                .single();
+
+              lineData.sequence_number = (maxSeq?.sequence_number || 0) + created.length + 1;
+            }
+
+            const { data, error } = await ctx.supabase
+              .from("estimate_lines")
+              .insert(lineData)
+              .select()
+              .single();
+
+            if (error) {
+              errors.push({ index: i, error: error.message });
+            } else {
+              created.push(data);
+            }
+          } catch (error) {
+            errors.push({ 
+              index: i, 
+              error: error instanceof Error ? error.message : 'Unknown error'
+            });
+          }
+        }
+
+        // Update estimate totals
+        if (created.length > 0) {
+          await updateEstimateTotals(ctx, input.estimate_id);
+        }
+
+        return {
+          success: errors.length === 0,
+          created,
+          errors
+        };
+      } catch (error) {
+        console.error("Error in bulk create lines:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to create lines in bulk",
+        });
+      }
+    }),
+
+  bulkUpdateLines: rateLimitedProcedure
+    .input(z.object({
+      estimate_id: z.string().uuid(),
+      updates: z.array(EstimateLineUpdateSchema).max(50) // Limit to 50 updates per batch
+    }))
+    .output(z.object({
+      success: z.boolean(),
+      updated: z.array(EstimateLineOutputSchema),
+      errors: z.array(z.object({
+        id: z.string(),
+        error: z.string()
+      }))
+    }))
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const updated: any[] = [];
+        const errors: { id: string; error: string }[] = [];
+
+        // Process each update
+        for (const updateData of input.updates) {
+          try {
+            const { id, ...fields } = updateData;
+
+            const { data, error } = await ctx.supabase
+              .from("estimate_lines")
+              .update(fields)
+              .eq("id", id)
+              .eq("estimate_id", input.estimate_id) // Ensure line belongs to this estimate
+              .select();
+
+            if (error) {
+              errors.push({ id, error: error.message });
+            } else if (!data || data.length === 0) {
+              errors.push({ id, error: "Line not found or does not belong to this estimate" });
+            } else if (data.length > 1) {
+              errors.push({ id, error: "Multiple lines found with same ID (data corruption)" });
+            } else {
+              updated.push(data[0]);
+            }
+          } catch (error) {
+            errors.push({ 
+              id: updateData.id, 
+              error: error instanceof Error ? error.message : 'Unknown error'
+            });
+          }
+        }
+
+        // Update estimate totals
+        if (updated.length > 0) {
+          await updateEstimateTotals(ctx, input.estimate_id);
+        }
+
+        return {
+          success: errors.length === 0,
+          updated,
+          errors
+        };
+      } catch (error) {
+        console.error("Error in bulk update lines:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to update lines in bulk",
+        });
+      }
+    }),
+
+  bulkDeleteLines: rateLimitedProcedure
+    .input(z.object({
+      estimate_id: z.string().uuid(),
+      line_ids: z.array(z.string().uuid()).max(50) // Limit to 50 deletions per batch
+    }))
+    .output(z.object({
+      success: z.boolean(),
+      deleted: z.number(),
+      errors: z.array(z.object({
+        id: z.string(),
+        error: z.string()
+      }))
+    }))
+    .mutation(async ({ ctx, input }) => {
+      try {
+        let deleted = 0;
+        const errors: { id: string; error: string }[] = [];
+
+        // Process each deletion
+        for (const lineId of input.line_ids) {
+          try {
+            const { error } = await ctx.supabase
+              .from("estimate_lines")
+              .delete()
+              .eq("id", lineId)
+              .eq("estimate_id", input.estimate_id); // Ensure line belongs to this estimate
+
+            if (error) {
+              errors.push({ id: lineId, error: error.message });
+            } else {
+              deleted++;
+            }
+          } catch (error) {
+            errors.push({ 
+              id: lineId, 
+              error: error instanceof Error ? error.message : 'Unknown error'
+            });
+          }
+        }
+
+        // Update estimate totals
+        if (deleted > 0) {
+          await updateEstimateTotals(ctx, input.estimate_id);
+        }
+
+        return {
+          success: errors.length === 0,
+          deleted,
+          errors
+        };
+      } catch (error) {
+        console.error("Error in bulk delete lines:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to delete lines in bulk",
+        });
       }
     }),
 });

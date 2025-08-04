@@ -1,7 +1,7 @@
 // src/lib/api/domains/estimates/server-prefetch.server.ts
 import 'server-only';
 import { cache } from "react";
-import { getQueryClient } from "@/lib/api/query-client";
+import { getQueryClient } from "@/lib/api/getQueryClient.server";
 import { createServerCaller } from "@/lib/api/utils/createServerCaller";
 import { QUERY_KEYS, CACHE_TIMES } from "./constants";
 

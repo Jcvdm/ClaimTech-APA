@@ -29,9 +29,9 @@ import InspectionTab from "./tabs/inspection/InspectionTab";
 import EstimateTab from "./tabs/estimate/EstimateTab";
 import PreIncidentTab from "./tabs/preincident/PreIncidentTab";
 
-export default async function ClaimDetailsPage({ params }: { params: { id: string } }) {
+export default async function ClaimDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   // Await params to satisfy Next.js requirement
-  const { id } = await Promise.resolve(params);
+  const { id } = await params;
 
   // Server-side validation of UUID
   if (!isValidUUID(id)) {
@@ -54,7 +54,7 @@ export default async function ClaimDetailsPage({ params }: { params: { id: strin
     prefetchInspectionsByClaimServer(id),
     prefetchClaimLogsServer(id, 20) // Prefetch logs with a limit of 20
   ]);
-  console.log(`[ClaimDetailsPage] Prefetched ${inspectionsData.length} inspections and ${logsData.length} logs for claim ${id}`);
+  console.log(`[ClaimDetailsPage] Prefetched ${Array.isArray(inspectionsData) ? inspectionsData.length : 0} inspections and ${Array.isArray(logsData) ? logsData.length : 0} logs for claim ${id}`);
 
   // All related data is now included in the claimData object
   const {
@@ -73,21 +73,21 @@ export default async function ClaimDetailsPage({ params }: { params: { id: strin
     overview: (
       <ErrorBoundary fallback={<div>Error loading overview</div>}>
         <Suspense fallback={<div>Loading overview...</div>}>
-          <OverviewTab claimData={claimData} />
+          <OverviewTab claimData={claimData as any} />
         </Suspense>
       </ErrorBoundary>
     ),
     appointment: (
       <ErrorBoundary fallback={<div>Error loading appointment</div>}>
         <Suspense fallback={<div>Loading appointment...</div>}>
-          <AppointmentsTab appointmentsData={appointmentsData} claimData={claimData} />
+          <AppointmentsTab appointmentsData={appointmentsData as any} claimData={claimData as any} />
         </Suspense>
       </ErrorBoundary>
     ),
     inspection: (
       <ErrorBoundary fallback={<div>Error loading inspection</div>}>
         <Suspense fallback={<div>Loading inspection...</div>}>
-          <InspectionTab inspectionsData={inspectionsData} />
+          <InspectionTab inspectionsData={inspectionsData as any} />
         </Suspense>
       </ErrorBoundary>
     ),
@@ -118,7 +118,7 @@ export default async function ClaimDetailsPage({ params }: { params: { id: strin
             </Button>
           </Link>
           <h1 className="text-2xl font-bold">
-            Claim Details: {claimData.details?.job_number || claimData.summary?.job_number}
+            Claim Details: {(claimData as any).details?.job_number || (claimData as any).summary?.job_number}
           </h1>
         </div>
       </div>
@@ -145,7 +145,7 @@ export default async function ClaimDetailsPage({ params }: { params: { id: strin
           client: clientData,
           inspections: inspectionsData,
           logs: logsData
-        }}
+        } as any}
       />
     </div>
   );

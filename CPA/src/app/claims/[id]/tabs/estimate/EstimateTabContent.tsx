@@ -1,13 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus, ClipboardList } from "lucide-react";
-import { useEstimate, useCreateEstimate } from "@/lib/api/domains/estimates/hooks";
+import { useEstimate, useCreateEstimate, useEstimateLines } from "@/lib/api/domains/estimates/hooks";
 import { EstimateForm } from "./EstimateForm";
-import { EditableEstimateLinesTable } from "./EditableEstimateLinesTable";
+import { EstimateLineItemsContainer } from "@/components/estimate/EstimateLineItemsContainer";
+import { EstimateErrorBoundary } from "@/components/estimate/error/EstimateErrorBoundary";
+import { NotificationContainer } from "@/components/estimate/error/NotificationContainer";
+import { useErrorNotifications } from "@/components/estimate/error/ErrorNotification";
 import { EstimateSummary } from "./EstimateSummary";
 import { SyncStatusIndicator } from "@/components/ui/SyncStatusIndicator";
 
@@ -16,6 +19,32 @@ export function EstimateTabContent() {
   const { data: estimate, isLoading, refetch } = useEstimate(claimId as string);
   const createEstimate = useCreateEstimate();
   const [showCreateForm, setShowCreateForm] = useState(false);
+
+  // State for live estimate lines (updated as user edits)
+  const [liveEstimateLines, setLiveEstimateLines] = useState<EstimateLine[]>([]);
+
+  // Fetch estimate lines for initial data
+  const { data: estimateLines = [] } = useEstimateLines(
+    estimate?.id || "", 
+    { enabled: !!estimate?.id }
+  );
+
+  // Initialize live lines when server data loads
+  useEffect(() => {
+    if (estimateLines.length > 0 && liveEstimateLines.length === 0) {
+      console.log("[EstimateTabContent] Initializing live lines with server data:", estimateLines.length);
+      setLiveEstimateLines(estimateLines);
+    }
+  }, [estimateLines, liveEstimateLines.length]);
+  
+  // Error notifications for the estimate functionality
+  const {
+    notifications,
+    removeNotification,
+    addError,
+    addSuccess,
+    addWarning
+  } = useErrorNotifications();
 
   // Function to handle cancellation or completion of the form
   const handleFormClose = () => {
@@ -77,19 +106,44 @@ export function EstimateTabContent() {
       <div className="space-y-6">
         <h2 className="text-xl font-semibold">Repair Estimate</h2>
 
-        {/* Estimate Lines */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Estimate Lines</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <EditableEstimateLinesTable estimate={estimate} />
-          </CardContent>
-        </Card>
+        {/* Estimate Lines - New Modular Component */}
+        <EstimateErrorBoundary
+          onError={(error, errorInfo) => {
+            console.error('Estimate component error:', error, errorInfo);
+            addError('Component Error', `An error occurred: ${error.message}`);
+          }}
+        >
+          <EstimateLineItemsContainer
+            estimate={estimate}
+            readonly={false}
+            maxRows={1000}
+            enableBulkActions={true}
+            enableKeyboardNavigation={true}
+            onSelectionChange={(selectedIds) => {
+              console.log('Selection changed:', selectedIds);
+            }}
+            onLinesChange={(lines) => {
+              console.log('[EstimateTabContent] Received live lines update:', lines.length);
+              setLiveEstimateLines(lines);
+            }}
+          />
+        </EstimateErrorBoundary>
 
-        {/* Estimate Summary */}
-        <EstimateSummary estimate={estimate} />
+        {/* Estimate Summary with Live Totals */}
+        <EstimateSummary 
+          estimate={estimate} 
+          liveLines={liveEstimateLines}
+          showLiveIndicator={true}
+        />
       </div>
+      
+      {/* Global notifications for estimate operations */}
+      <NotificationContainer
+        notifications={notifications}
+        onClose={removeNotification}
+        position="top-right"
+        maxNotifications={3}
+      />
     </>
   );
 }

@@ -48,65 +48,28 @@ export const createTRPCContext = async (opts: { headers: Headers, request?: Next
     }
 
     // ---- DEVELOPMENT OVERRIDE START ----
-    // WARNING: Remove or disable this override before production!
-    if (process.env.NODE_ENV === 'development' && !user) {
-      console.warn("\n⚠️ WARNING: Using mock user for tRPC context in development. Real authentication is bypassed. ⚠️\n");
+    // Secure development override with additional safeguards
+    if (process.env.NODE_ENV === 'development' && 
+        process.env.ALLOW_DEV_BYPASS === 'true' && 
+        process.env.DEV_USER_ID &&
+        !user) {
+      
+      // Log security warning with request details
+      console.warn(`[SECURITY] DEV BYPASS ACTIVE: ${new Date().toISOString()} - Request from: ${opts.request?.headers.get('x-forwarded-for') || 'unknown'}`);
 
-      // Create a mock user
+      // Create a mock user using environment variables
       user = {
-        id: 'fb0c14a7-550a-4d41-90f4-86d714961f87', // Your provided User ID
+        id: process.env.DEV_USER_ID,
         app_metadata: { provider: 'email' },
         user_metadata: { name: 'Development User' },
         aud: 'authenticated',
         created_at: new Date().toISOString(),
-        email: 'dev-user@example.com',
+        email: process.env.DEV_USER_EMAIL || 'dev-user@example.com',
         role: 'authenticated'
       };
 
-      console.log("[tRPC Context] Created mock user for development:", {
-        userId: user.id,
-        email: user.email,
-        name: user.user_metadata.name
-      });
-
-      // For development, let's modify the RLS policy to allow all operations
-      // This is a workaround for local development only
-      try {
-        // Add a policy that allows all operations for all users
-        await supabase.rpc('create_dev_policy_for_vehicles');
-        console.log('Created development policy for vehicles table');
-
-        // Also create a policy for appointments table
-        await supabase.rpc('create_dev_policy_for_appointments');
-        console.log('Created development policy for appointments table');
-
-        // Create policy for vehicle inspections table
-        try {
-          await supabase.rpc('create_dev_policy_for_vehicle_inspections');
-          console.log('Created development policy for vehicle inspections table');
-        } catch (inspectionPolicyError) {
-          console.warn('Failed to create vehicle inspections policy (may not exist yet):', inspectionPolicyError);
-        }
-
-        // Create policy for estimates table
-        try {
-          await supabase.rpc('create_dev_policy_for_estimates');
-          console.log('Created development policy for estimates table');
-        } catch (estimatesPolicyError) {
-          console.warn('Failed to create estimates policy (may not exist yet):', estimatesPolicyError);
-        }
-
-        // Create policy for estimate_lines table
-        try {
-          await supabase.rpc('create_dev_policy_for_estimate_lines');
-          console.log('Created development policy for estimate_lines table');
-        } catch (estimateLinesPolicyError) {
-          console.warn('Failed to create estimate_lines policy (may not exist yet):', estimateLinesPolicyError);
-        }
-      } catch (policyError) {
-        console.warn('Failed to create development policy:', policyError);
-        // Continue without policies - they might already exist
-      }
+      // Only log non-sensitive information
+      console.log("[tRPC Context] Development user session created");
     }
     // ---- DEVELOPMENT OVERRIDE END ----
   } catch (error) {
@@ -136,23 +99,21 @@ export const createTRPCContext = async (opts: { headers: Headers, request?: Next
       rpc: () => ({ data: null, error: null }),
     };
 
-    // In development, still use the mock user
-    if (process.env.NODE_ENV === 'development') {
+    // In development, only use mock user if explicitly allowed
+    if (process.env.NODE_ENV === 'development' && 
+        process.env.ALLOW_DEV_BYPASS === 'true' && 
+        process.env.DEV_USER_ID) {
       user = {
-        id: 'fb0c14a7-550a-4d41-90f4-86d714961f87',
+        id: process.env.DEV_USER_ID,
         app_metadata: { provider: 'email' },
         user_metadata: { name: 'Development User' },
         aud: 'authenticated',
         created_at: new Date().toISOString(),
-        email: 'dev-user@example.com',
+        email: process.env.DEV_USER_EMAIL || 'dev-user@example.com',
         role: 'authenticated'
       };
 
-      console.log("[tRPC Context] Created fallback mock user after error:", {
-        userId: user.id,
-        email: user.email,
-        name: user.user_metadata.name
-      });
+      console.log("[tRPC Context] Created fallback development user after error");
     }
   }
 
@@ -247,17 +208,15 @@ export const publicProcedure = t.procedure.use(timingMiddleware);
  * @see https://trpc.io/docs/server/middlewares
  */
 const enforceUserIsAuthed = t.middleware(({ ctx, next, path }) => {
-  console.log(`[tRPC Auth] Checking auth for procedure: ${path}`);
-
   if (!ctx.user) {
-    console.error(`[tRPC Auth] No user found in context for procedure: ${path}`);
+    console.warn(`[tRPC Auth] Unauthorized access attempt to: ${path}`);
     throw new Error("UNAUTHORIZED: User must be logged in to access this resource");
   }
 
-  console.log(`[tRPC Auth] User authenticated for procedure: ${path}`, {
-    userId: ctx.user.id,
-    email: ctx.user.email
-  });
+  // Only log in development
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`[tRPC Auth] User authenticated for procedure: ${path}`);
+  }
 
   return next({
     ctx: {
@@ -267,4 +226,41 @@ const enforceUserIsAuthed = t.middleware(({ ctx, next, path }) => {
   });
 });
 
+/**
+ * Simple rate limiting middleware
+ */
+const createRateLimit = (max: number, windowMs: number) => {
+  const store = new Map<string, { count: number; resetTime: number }>();
+  
+  return t.middleware(async ({ ctx, path, next }) => {
+    if (!ctx.user?.id) {
+      return next();
+    }
+
+    const key = `${ctx.user.id}:${path}`;
+    const now = Date.now();
+    const resetTime = now + windowMs;
+    
+    const existing = store.get(key);
+    
+    if (!existing || now > existing.resetTime) {
+      store.set(key, { count: 1, resetTime });
+    } else {
+      existing.count++;
+      if (existing.count > max) {
+        throw new Error(`Rate limit exceeded. Try again in ${Math.ceil((existing.resetTime - now) / 1000)} seconds.`);
+      }
+    }
+
+    return next();
+  });
+};
+
+const bulkOperationRateLimit = createRateLimit(5, 60 * 1000); // 5 per minute
+const standardRateLimit = createRateLimit(30, 60 * 1000); // 30 per minute  
+const readOnlyRateLimit = createRateLimit(100, 60 * 1000); // 100 per minute
+
 export const protectedProcedure = t.procedure.use(timingMiddleware).use(enforceUserIsAuthed);
+export const rateLimitedProcedure = protectedProcedure.use(standardRateLimit);
+export const bulkRateLimitedProcedure = protectedProcedure.use(bulkOperationRateLimit);
+export const readOnlyRateLimitedProcedure = protectedProcedure.use(readOnlyRateLimit);

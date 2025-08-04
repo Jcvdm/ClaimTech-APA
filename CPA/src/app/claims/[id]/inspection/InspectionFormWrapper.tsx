@@ -7,6 +7,8 @@ import { useInspectionsByClaim } from "@/lib/api/domains/inspections/hooks";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Button } from "@/components/ui/button";
 import { AlertCircle } from "lucide-react";
+import { type Vehicle } from "@/lib/api/domains/vehicles/types";
+import { type Inspection } from "@/lib/api/domains/inspections/types";
 
 interface InspectionFormWrapperProps {
   claimId: string;
@@ -18,11 +20,15 @@ export function InspectionFormWrapper({ claimId }: InspectionFormWrapperProps) {
   const { data: vehicle, isLoading: isLoadingVehicle } = useVehicle(claim?.vehicle_id || "");
   const { data: existingInspections } = useInspectionsByClaim(claimId);
 
+  // Type assertion to ensure vehicle has proper type
+  const typedVehicle = vehicle as Vehicle | undefined;
+  const typedInspections = existingInspections as Inspection[] | undefined;
+
   if (isLoadingClaim || isLoadingVehicle) {
     return <div>Loading...</div>;
   }
 
-  if (!claim || !vehicle) {
+  if (!claim || !typedVehicle?.id) {
     return <div>Claim or vehicle data not found</div>;
   }
 
@@ -45,8 +51,8 @@ export function InspectionFormWrapper({ claimId }: InspectionFormWrapperProps) {
     <ErrorBoundary fallback={fallback}>
       <InspectionForm
         claimId={claimId}
-        vehicleId={vehicle.id}
-        existingInspection={existingInspections?.[0]}
+        vehicleId={typedVehicle.id}
+        existingInspection={typedInspections?.[0]}
       />
     </ErrorBoundary>
   );

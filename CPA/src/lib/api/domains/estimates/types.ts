@@ -89,20 +89,20 @@ export const EstimateOutputSchema = z.object({
 // Zod schema for estimate line creation
 export const EstimateLineCreateSchema = z.object({
   estimate_id: z.string().uuid(),
-  damage_id: z.string().uuid().optional(),
+  damage_id: z.string().uuid().nullable().optional(),
   sequence_number: z.number().int().positive(),
   description: z.string(), // Allow empty strings for description
   operation_code: z.nativeEnum(OperationCode),
-  part_type: z.nativeEnum(PartType).optional(),
-  part_number: z.string().optional(),
-  part_cost: z.number().nonnegative().optional(),
+  part_type: z.nativeEnum(PartType).nullable().optional(),
+  part_number: z.string().nullable().optional(),
+  part_cost: z.number().nonnegative().nullable().optional(),
   quantity: z.number().positive().default(1),
-  strip_fit_hours: z.number().nonnegative().optional(),
-  repair_hours: z.number().nonnegative().optional(),
-  paint_hours: z.number().nonnegative().optional(),
-  sublet_cost: z.number().nonnegative().optional(),
+  strip_fit_hours: z.number().nonnegative().nullable().optional(),
+  repair_hours: z.number().nonnegative().nullable().optional(),
+  paint_hours: z.number().nonnegative().nullable().optional(),
+  sublet_cost: z.number().nonnegative().nullable().optional(),
   is_included: z.boolean().default(true),
-  line_notes: z.string().optional(),
+  line_notes: z.string().nullable().optional(),
 });
 
 // Zod schema for estimate line update

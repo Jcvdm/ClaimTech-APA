@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git pull:*)",
+      "Bash(git remote set-url:*)",
+      "Bash(npm install)",
+      "Bash(npm install:*)",
+      "mcp__ide__getDiagnostics",
+      "Bash(rm:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npx supabase:*)",
+      "Bash(npm run typecheck:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx kill-port:*)",
+      "Bash(npm run type-check:*)",
+      "Bash(true)",
+      "Bash(timeout 10 npm run dev)",
+      "Bash(npm run check:*)",
+      "Bash(timeout 30 npm run dev)",
+      "WebFetch(domain:localhost)",
+      "mcp__supabase__list_tables",
+      "Bash(find:*)",
+      "Bash(cp:*)",
+      "mcp__supabase__execute_sql",
+      "Bash(git add:*)"
+    ],
+    "deny": []
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "supabase"
+  ]
+}

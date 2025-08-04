@@ -1,7 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import { createServerCaller } from "@/lib/api/utils/createServerCaller";
-import { getQueryClient } from "@/lib/api/query-client.server";
+import { getQueryClient } from "@/lib/api/getQueryClient.server";
 import { type Appointment } from "./index";
 
 /**

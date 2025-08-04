@@ -9,6 +9,7 @@ import { lookupRouter } from "@/server/api/routers/lookup";
 import { inspectionRouter } from "@/server/api/routers/inspection";
 import { logRouter } from "@/server/api/routers/log";
 import { estimateRouter } from "@/server/api/routers/estimate";
+import { estimateBulkRouter } from "@/server/api/routers/estimate-bulk";
 
 /**
  * This is the primary router for your server.
@@ -26,6 +27,7 @@ export const appRouter = createTRPCRouter({
 	inspection: inspectionRouter,
 	log: logRouter,
 	estimate: estimateRouter,
+	estimateBulk: estimateBulkRouter,
 });
 
 // export type definition of API
