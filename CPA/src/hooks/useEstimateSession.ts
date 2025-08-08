@@ -89,11 +89,9 @@ export function useEstimateSession({
     enabled: !!estimateId,
   });
   
-  // DAL prefetching and session management
+  // DAL prefetching 
   const { 
     prefetchForEstimateTab,
-    markSessionActive,
-    markSessionInactive,
   } = useEstimatePrefetching();
   
   // Background sync engine
@@ -138,6 +136,7 @@ export function useEstimateSession({
 
   // Session store integration
   const {
+    currentClaimId,
     currentEstimateId,
     displayLines: storeDisplayLines,
     pendingChanges,
@@ -159,7 +158,7 @@ export function useEstimateSession({
   // Only recreate when the underlying store data actually changes
   const displayLines = useMemo(() => {
     return getDisplayLines();
-  }, [storeDisplayLines, currentEstimateId, lastActivityTime]);
+  }, [currentEstimateId, storeDisplayLines]);
   
   // Compute hasUnsavedChanges outside of memo dependency to prevent function call in deps
   const hasChanges = hasUnsavedChanges();
@@ -167,25 +166,30 @@ export function useEstimateSession({
   // Get server lines from DAL or fallback to provided ones
   const dalServerLines = linesQuery.data || serverLines || [];
 
-  // Initialize DAL prefetching when session starts
+  // Enhanced claim change detection and session management
   useEffect(() => {
     if (claimId && estimateId) {
       console.log('[useEstimateSession] Initializing DAL prefetching for estimate session');
       
-      // Mark session as active for enhanced caching
-      markSessionActive(estimateId);
+      // CRITICAL: Check for claim change before proceeding
+      if (currentClaimId && currentClaimId !== claimId) {
+        console.warn('[useEstimateSession] CLAIM CHANGE DETECTED - Resetting session', {
+          oldClaimId: currentClaimId,
+          newClaimId: claimId
+        });
+        
+        // Force session reset to prevent contamination
+        const sessionStore = useEstimateSessionStore.getState();
+        sessionStore.resetSession();
+      }
       
       // Prefetch data for estimate tab if not already fresh
       prefetchForEstimateTab(claimId, { priority: true });
     }
     
-    return () => {
-      // Clean up session when hook unmounts
-      if (estimateId) {
-        markSessionInactive(estimateId);
-      }
-    };
-  }, [claimId, estimateId, markSessionActive, markSessionInactive, prefetchForEstimateTab]); // Fixed dependencies
+    // Note: Session lifecycle (markSessionActive/Inactive) is managed by EstimateTabContent
+    // to avoid duplicate calls and ensure single source of truth
+  }, [claimId, estimateId, currentClaimId, prefetchForEstimateTab]); // Removed session management dependencies
 
   // Initialize session store when DAL data becomes available (with navigation persistence and race condition handling)
   useEffect(() => {
@@ -197,7 +201,7 @@ export function useEstimateSession({
     // Wait for cache to finish loading before initializing
     if (hasServerData && !isLoading && (hasNoSession || hasEmptySession)) {
       console.log('[useEstimateSession] Cache ready, initializing session with DAL data for estimate:', estimateId);
-      initializeLines(estimateId, dalServerLines);
+      initializeLines(claimId, estimateId, dalServerLines);
       // Create initial backup
       createBackup();
     } else if (hasServerData && currentEstimateId === estimateId && displayLines.length > 0) {
@@ -208,7 +212,7 @@ export function useEstimateSession({
       if (newServerLines.length > 0) {
         console.log('[useEstimateSession] Merging new server lines into existing session:', newServerLines.length);
         const mergedLines = [...displayLines, ...newServerLines];
-        initializeLines(estimateId, mergedLines);
+        initializeLines(claimId, estimateId, mergedLines);
         // Update backup with merged data
         createBackup();
       }
@@ -217,11 +221,128 @@ export function useEstimateSession({
     }
   }, [estimateId, dalServerLines.length, currentEstimateId, displayLines.length, linesQuery.isLoading, estimateQuery.isLoading, initializeLines, createBackup]); // Fixed dependencies to prevent infinite loops
 
-  // Update field with immediate optimistic update
+  // Update field with immediate optimistic update and runtime contamination detection
   const updateField = useCallback((lineId: string, field: keyof EstimateLine, value: any) => {
-    if (currentEstimateId !== estimateId) {
-      console.warn('[useEstimateSession] Cannot update field - session mismatch');
-      return;
+    // CRITICAL: Runtime contamination detection
+    if (currentEstimateId !== estimateId || currentClaimId !== claimId) {
+      console.error('[useEstimateSession] CRITICAL: Data contamination detected!', {
+        currentClaimId,
+        expectedClaimId: claimId,
+        currentEstimateId,
+        expectedEstimateId: estimateId,
+        action: 'updateField',
+        lineId,
+        field: String(field)
+      });
+      
+      // Show user-visible error for critical contamination
+      toast.error('Data integrity error detected. Attempting recovery...', {
+        duration: 5000,
+        important: true
+      });
+      
+      // Safe contamination recovery with user edit preservation
+      if (dalServerLines.length > 0 && !linesQuery.isLoading) {
+        console.log('[useEstimateSession] Safe recovery: initializing session with user edit preservation');
+        
+        try {
+          // Step 1: Initialize session with server data
+          initializeLines(claimId, estimateId, dalServerLines);
+          
+          // Step 2: Validate recovery was successful
+          const sessionStore = useEstimateSessionStore.getState();
+          if (sessionStore.currentClaimId !== claimId || sessionStore.currentEstimateId !== estimateId) {
+            throw new Error('Session recovery failed - state mismatch persists');
+          }
+          
+          // Step 3: Preserve and re-apply the user's original edit
+          console.log('[useEstimateSession] Recovery successful, preserving user edit:', { lineId, field: String(field), value });
+          
+          // Small delay to ensure session state is stable before applying edit
+          setTimeout(() => {
+            const updates = { [field]: value } as Partial<EstimateLine>;
+            updateLine(lineId, updates);
+            
+            toast.success('Data integrity restored. Your edit has been preserved.', {
+              duration: 3000
+            });
+          }, 50);
+          
+          // Return early to prevent double processing  
+          return;
+          
+        } catch (recoveryError) {
+          console.error('[useEstimateSession] Safe recovery failed:', recoveryError);
+          toast.error('Recovery failed. Please refresh the page and try again.', {
+            duration: 10000,
+            important: true
+          });
+          return;
+        }
+      } else {
+        console.error('[useEstimateSession] Cannot attempt recovery - session not ready');
+        toast.error('Cannot recover - please refresh the page.', {
+          duration: 10000,
+          important: true  
+        });
+        return;
+      }
+    }
+    
+    // Additional validation: Ensure line belongs to current estimate
+    const currentLine = storeDisplayLines.get(lineId);
+    if (currentLine && currentLine.estimate_id !== estimateId) {
+      console.error('[useEstimateSession] CRITICAL: Line contamination detected!', {
+        lineId,
+        lineEstimateId: currentLine.estimate_id,
+        sessionEstimateId: estimateId,
+        field: String(field)
+      });
+      
+      // Attempt line-level recovery by refreshing session data
+      toast.error('Line data contamination detected. Attempting recovery...', {
+        duration: 5000,
+        important: true
+      });
+      
+      // Force session refresh and preserve user edit
+      console.log('[useEstimateSession] Attempting line-level contamination recovery');
+      
+      try {
+        // Refresh data from server
+        linesQuery.refetch();
+        
+        // Re-apply the user's edit after a brief delay for data to load
+        setTimeout(async () => {
+          // Wait for fresh data
+          const freshData = await linesQuery.refetch();
+          
+          if (freshData.data && freshData.data.find(line => line.id === lineId)) {
+            console.log('[useEstimateSession] Line recovery successful, preserving edit');
+            const updates = { [field]: value } as Partial<EstimateLine>;
+            updateLine(lineId, updates);
+            
+            toast.success('Line data recovered. Your edit has been preserved.', {
+              duration: 3000
+            });
+          } else {
+            toast.error('Line recovery failed - line not found in fresh data.', {
+              duration: 8000,
+              important: true
+            });
+          }
+        }, 200);
+        
+        return; // Exit early to prevent processing contaminated data
+        
+      } catch (error) {
+        console.error('[useEstimateSession] Line recovery failed:', error);
+        toast.error('Line recovery failed. Please refresh the page.', {
+          duration: 10000,
+          important: true
+        });
+        return;
+      }
     }
     
     console.log(`[useEstimateSession] Updating ${String(field)} for line ${lineId}:`, value);
@@ -234,7 +355,7 @@ export function useEstimateSession({
     setTimeout(() => {
       createBackup();
     }, 100); // Small delay to allow state updates
-  }, [currentEstimateId, estimateId, updateLine, getDisplayLines, createBackup, hasUnsavedChanges]);
+  }, [currentEstimateId, estimateId, currentClaimId, claimId, storeDisplayLines, updateLine, createBackup, dalServerLines.length, linesQuery.isLoading, initializeLines]);
 
   // Simplified: Direct DAL sync with minimal wrapper
   const syncNow = useCallback(async () => {

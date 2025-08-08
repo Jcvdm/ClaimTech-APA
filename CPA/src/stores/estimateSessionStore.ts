@@ -62,6 +62,7 @@ interface DirtyLineState {
 interface EstimateSessionState {
   // Current editing session - simple and focused
   // Core session state
+  currentClaimId: string | null; // NEW: Claim isolation key
   currentEstimateId: string | null;
   displayLines: Map<string, EstimateLine>; // Single source of truth for UI
   pendingChanges: Set<string>; // Track which lines have unsaved changes
@@ -76,7 +77,7 @@ interface EstimateSessionState {
   retryScheduled: boolean;
   
   // Core actions - simplified API
-  initializeLines: (estimateId: string, serverLines: EstimateLine[]) => void;
+  initializeLines: (claimId: string, estimateId: string, serverLines: EstimateLine[]) => void;
   updateLine: (lineId: string, updates: Partial<EstimateLine>) => void;
   addOptimisticLine: (tempId: string, line: EstimateLine) => void;
   replaceOptimisticLine: (tempId: string, realLine: EstimateLine) => void;
@@ -105,12 +106,17 @@ interface EstimateSessionState {
   // Enhanced sync management
   updateLastSyncTime: () => void;
   canSync: () => boolean;
+  
+  // Runtime contamination detection
+  validateSession: (expectedClaimId: string, expectedEstimateId: string) => boolean;
+  detectContamination: (expectedClaimId: string, expectedEstimateId: string, context?: string) => boolean;
 }
 
 export const useEstimateSessionStore = create<EstimateSessionState>()(
   devtools(
     (set, get) => ({
       // Core session state
+      currentClaimId: null,
       currentEstimateId: null,
       displayLines: new Map(),
       pendingChanges: new Set(),
@@ -124,8 +130,19 @@ export const useEstimateSessionStore = create<EstimateSessionState>()(
       isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
       retryScheduled: false,
       
-      initializeLines: (estimateId: string, serverLines: EstimateLine[]) => {
-        console.log('[EstimateStore] Initializing lines for estimate:', estimateId);
+      initializeLines: (claimId: string, estimateId: string, serverLines: EstimateLine[]) => {
+        console.log('[EstimateStore] Initializing lines for claim:', claimId, 'estimate:', estimateId);
+        
+        // CRITICAL: Validate claim-estimate context to prevent contamination
+        const currentState = get();
+        if (currentState.currentClaimId && currentState.currentClaimId !== claimId) {
+          console.warn('[EstimateStore] CLAIM MISMATCH - Forcing session reset', {
+            oldClaimId: currentState.currentClaimId,
+            newClaimId: claimId
+          });
+          // Force complete session reset for different claim
+          get().resetSession();
+        }
         
         const linesMap = new Map(serverLines.map(line => [line.id, line]));
         
@@ -141,6 +158,7 @@ export const useEstimateSessionStore = create<EstimateSessionState>()(
         });
         
         set({
+          currentClaimId: claimId,
           currentEstimateId: estimateId,
           displayLines: linesMap,
           pendingChanges: new Set(), // Clear pending changes on new session
@@ -174,8 +192,8 @@ export const useEstimateSessionStore = create<EstimateSessionState>()(
           }
           
           if (!hasActualChanges) {
-            console.log(`[EstimateStore] No actual changes detected for line ${lineId}, skipping update`);
-            return {}; // Don't update anything if no actual changes occurred
+            console.log(`[EstimateStore] No actual changes detected for line ${lineId}, but updating lastActivityTime for UI responsiveness`);
+            return { lastActivityTime: Date.now() };
           }
           
           const newDisplayLines = new Map(state.displayLines);
@@ -264,7 +282,8 @@ export const useEstimateSessionStore = create<EstimateSessionState>()(
           
           return { 
             displayLines: newDisplayLines,
-            pendingChanges: newPendingChanges
+            pendingChanges: newPendingChanges,
+            lastActivityTime: Date.now()
           };
         });
       },
@@ -281,7 +300,8 @@ export const useEstimateSessionStore = create<EstimateSessionState>()(
           
           return { 
             displayLines: newDisplayLines,
-            pendingChanges: newPendingChanges
+            pendingChanges: newPendingChanges,
+            lastActivityTime: Date.now()
           };
         });
       },
@@ -338,6 +358,7 @@ export const useEstimateSessionStore = create<EstimateSessionState>()(
         console.log('[EstimateStore] Resetting session');
         
         set({
+          currentClaimId: null,
           currentEstimateId: null,
           displayLines: new Map(),
           pendingChanges: new Set(),
@@ -448,6 +469,45 @@ export const useEstimateSessionStore = create<EstimateSessionState>()(
       canSync: () => {
         const state = get();
         return state.isOnline && state.syncQueue.size > 0 && state.syncStatus !== 'syncing';
+      },
+      
+      validateSession: (expectedClaimId: string, expectedEstimateId: string) => {
+        const state = get();
+        return state.currentClaimId === expectedClaimId && state.currentEstimateId === expectedEstimateId;
+      },
+      
+      detectContamination: (expectedClaimId: string, expectedEstimateId: string, context = 'unknown') => {
+        const state = get();
+        const isContaminated = state.currentClaimId !== expectedClaimId || state.currentEstimateId !== expectedEstimateId;
+        
+        if (isContaminated) {
+          console.error('[EstimateStore] CONTAMINATION DETECTED', {
+            context,
+            currentClaimId: state.currentClaimId,
+            expectedClaimId,
+            currentEstimateId: state.currentEstimateId,
+            expectedEstimateId,
+            timestamp: Date.now()
+          });
+          
+          // Additional line-level validation
+          let lineContamination = false;
+          state.displayLines.forEach((line, lineId) => {
+            if (line.estimate_id !== expectedEstimateId) {
+              console.error('[EstimateStore] LINE CONTAMINATION DETECTED', {
+                lineId,
+                lineEstimateId: line.estimate_id,
+                expectedEstimateId,
+                context
+              });
+              lineContamination = true;
+            }
+          });
+          
+          return { sessionContamination: isContaminated, lineContamination };
+        }
+        
+        return { sessionContamination: false, lineContamination: false };
       }
     }),
     {

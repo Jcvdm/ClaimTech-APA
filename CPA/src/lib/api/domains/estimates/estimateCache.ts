@@ -383,24 +383,53 @@ export function useEstimateCacheControl() {
   const queryClient = useQueryClient();
 
   /**
-   * Invalidate estimate data
+   * Invalidate estimate data with enhanced claim isolation
    */
   const invalidateEstimateData = useCallback((claimId: string, estimateId?: string) => {
     console.log(`[EstimateCache] Manually invalidating cache for claim ${claimId}${estimateId ? `, estimate ${estimateId}` : ''}`);
 
     try {
-      // Invalidate estimate by claim
+      // Invalidate estimate by claim ID (legacy query key)
       queryClient.invalidateQueries({
         queryKey: QUERY_KEYS.BY_CLAIM_ID(claimId),
       });
 
-      // If we have estimate ID, also invalidate lines
+      // Invalidate tRPC query keys for estimate by claim
+      queryClient.invalidateQueries({
+        queryKey: QUERY_KEYS.TRPC.GET_BY_CLAIM_ID(claimId),
+      });
+
+      // If we have estimate ID, invalidate lines with both legacy and claim-namespaced keys
       if (estimateId) {
+        // Legacy query key
         queryClient.invalidateQueries({
           queryKey: QUERY_KEYS.LINES_BY_ESTIMATE_ID(estimateId),
         });
+
+        // Claim-namespaced query key
+        queryClient.invalidateQueries({
+          queryKey: QUERY_KEYS.LINES_BY_ESTIMATE_ID(estimateId, claimId),
+        });
+
+        // tRPC query key for lines
+        queryClient.invalidateQueries({
+          queryKey: QUERY_KEYS.TRPC.GET_LINES_BY_ESTIMATE_ID(estimateId, claimId),
+        });
+      } else {
+        // If no specific estimate ID, invalidate all lines for this claim
+        // This uses a broader pattern to catch any lines associated with this claim
+        queryClient.invalidateQueries({
+          predicate: (query) => {
+            const queryKey = query.queryKey;
+            // Check if this is a lines query that contains our claim namespace
+            return Array.isArray(queryKey) && 
+                   queryKey.includes('lines') && 
+                   queryKey.some(key => typeof key === 'string' && key.includes(`claim:${claimId}`));
+          }
+        });
       }
 
+      console.log(`[EstimateCache] Successfully invalidated cache for claim ${claimId}`);
       return true;
     } catch (error) {
       console.error(`[EstimateCache] Error invalidating estimate data:`, error);
@@ -584,4 +613,13 @@ export function useHybridEstimateLines(
     refetch: linesQuery.refetch,
     isFetching: linesQuery.isFetching,
   };
+}
+
+/**
+ * Convenience hook that exports just the invalidateEstimateData function
+ * Used when components only need cache invalidation functionality
+ */
+export function useInvalidateEstimateData() {
+  const { invalidateEstimateData } = useEstimateCacheControl();
+  return invalidateEstimateData;
 }

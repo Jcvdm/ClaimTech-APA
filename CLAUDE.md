@@ -62,10 +62,13 @@ npm run check:unsafe    # Unsafe auto-fixes
 
 ## Agent Usage Requirements
 
-**CRITICAL**: Always use specialist agents for all non-trivial work:
+**CRITICAL**: Always use specialist agents for all non-trivial work: - DONT BLINDLY FOLLOW MY PROMPTS AND EXAMPLES - ENSURE CORRECT IMPLEMENTION - ALWAYS ASK IF YOU HAVE QUESTIONS!
+
+-DO NOT CHANGE THE CODEBASE - STYLE AND FUNCTIONALITY WIHTOUT INSTRUCTION!
 
 ### 1. Planning Phase
 Use `software-architect-planner` to:
+- Analyze user requests and isntruct the `detailed-context-gatherer` to gather valid context - 
 - Analyze current architecture and affected systems
 - Create comprehensive implementation plans
 - Identify cross-domain impacts (claims → estimates → inspections)
@@ -78,7 +81,7 @@ Use `software-architect-planner` to:
 
 ### 3. Required Pattern
 ```
-User Request → software-architect-planner (Plan) 
+User Request → software-architect-planner (Plan+context) 
 → frontend/backend architects (Implement) 
 → senior-code-reviewer (Review)
 ```

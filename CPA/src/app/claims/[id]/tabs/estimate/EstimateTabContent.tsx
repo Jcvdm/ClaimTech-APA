@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus, ClipboardList } from "lucide-react";
-import { useEstimate, useCreateEstimate } from "@/lib/api/domains/estimates/hooks";
-import { useEstimatePrefetching } from "@/lib/api/domains/estimates/estimateCache";
+import { useCreateEstimate } from "@/lib/api/domains/estimates/hooks";
+import { useEstimatePrefetching, useInvalidateEstimateData, useHybridEstimateData } from "@/lib/api/domains/estimates/estimateCache";
+import { useEstimateSessionStore } from "@/stores/estimateSessionStore";
 import { EstimateForm } from "./EstimateForm";
 import { EstimateLineItemsContainer } from "@/components/estimate/EstimateLineItemsContainer";
 import { EstimateErrorBoundary } from "@/components/estimate/error/EstimateErrorBoundary";
@@ -19,11 +20,46 @@ import { SyncStatusIndicator } from "@/components/ui/SyncStatusIndicator";
 
 export function EstimateTabContent() {
   const { id: claimId } = useParams();
-  const { data: estimate, isLoading, refetch } = useEstimate(claimId as string);
+  const { data: estimate, isLoading, refetch } = useHybridEstimateData(claimId as string);
   const [showCreateForm, setShowCreateForm] = useState(false);
 
   // DAL prefetching - simplified initialization
   const { prefetchForEstimateTab, markSessionActive, markSessionInactive } = useEstimatePrefetching();
+  const invalidateEstimateData = useInvalidateEstimateData();
+  
+  // Track previous claimId and estimateId to detect claim changes  
+  const prevClaimIdRef = useRef<string | null>(null);
+  const prevEstimateIdRef = useRef<string | null>(null);
+  
+  // Claim change detection and cache invalidation  
+  useEffect(() => {
+    const currentClaimId = claimId as string;
+    const currentEstimateId = estimate?.id || null;
+    const prevClaimId = prevClaimIdRef.current;
+    const prevEstimateId = prevEstimateIdRef.current;
+    
+    if (prevClaimId && prevClaimId !== currentClaimId) {
+      console.log('[EstimateTabContent] CLAIM CHANGE DETECTED - Complete cache invalidation', {
+        from: prevClaimId,
+        to: currentClaimId,
+        prevEstimateId
+      });
+      
+      // CRITICAL: Complete cache invalidation including lines
+      invalidateEstimateData(prevClaimId, prevEstimateId || undefined);
+      
+      // CRITICAL: Reset session store to prevent cross-claim contamination
+      const sessionStore = useEstimateSessionStore.getState();
+      if (sessionStore.currentClaimId === prevClaimId) {
+        console.log('[EstimateTabContent] Resetting session store due to claim change');
+        sessionStore.resetSession();
+      }
+    }
+    
+    // Update refs for next comparison
+    prevClaimIdRef.current = currentClaimId;
+    prevEstimateIdRef.current = currentEstimateId;
+  }, [claimId, estimate?.id, invalidateEstimateData]);
 
   // Single useEffect for DAL initialization and session management
   useEffect(() => {

@@ -31,11 +31,14 @@ export const QUERY_KEYS = {
   // Keys for estimate by ID
   BY_ID: (id: string) => ['estimates', 'byId', id] as const,
 
-  // Keys for estimate by claim ID
+  // Keys for estimate by claim ID (with claim isolation)
   BY_CLAIM_ID: (claimId: string) => ['estimates', 'byClaimId', claimId] as const,
 
-  // Keys for estimate lines by estimate ID
-  LINES_BY_ESTIMATE_ID: (estimateId: string) => ['estimates', 'lines', estimateId] as const,
+  // Keys for estimate lines by estimate ID (with claim isolation)
+  LINES_BY_ESTIMATE_ID: (estimateId: string, claimId?: string) => 
+    claimId 
+      ? ['estimates', 'lines', `claim:${claimId}`, estimateId] as const
+      : ['estimates', 'lines', estimateId] as const,
 
   // tRPC-compatible query keys
   TRPC: {
@@ -49,9 +52,9 @@ export const QUERY_KEYS = {
       { input: { id }, type: 'query' }
     ] as const,
 
-    GET_LINES_BY_ESTIMATE_ID: (estimateId: string) => [
+    GET_LINES_BY_ESTIMATE_ID: (estimateId: string, claimId?: string) => [
       ['trpc', 'estimate', 'getLinesByEstimateId'],
-      { input: { estimate_id: estimateId }, type: 'query' }
+      { input: { estimate_id: estimateId }, type: 'query', claimContext: claimId }
     ] as const,
 
     // Additional tRPC-compatible query keys for direct use with TanStack Query

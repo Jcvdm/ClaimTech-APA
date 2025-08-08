@@ -98,11 +98,12 @@ const TableCellInput = memo(({
     };
   }, []);
 
+  // Initialize local state from props, but only update if local value is empty and prop has value
   useEffect(() => {
-    if (isMountedRef.current) {
+    if (isMountedRef.current && !localValue && value) {
       setLocalValue(value?.toString() || "");
     }
-  }, [value]);
+  }, [value, localValue]);
 
   const handleBlur = useCallback(() => {
     if (isMountedRef.current) {
@@ -123,7 +124,7 @@ const TableCellInput = memo(({
       onChange={handleChange}
       onBlur={handleBlur}
       placeholder={placeholder}
-      className={`h-8 ${isModified ? "border-blue-500" : ""}`}
+      className={`h-9 border-0 bg-transparent focus:border focus:border-blue-500 focus:bg-white ${isModified ? "border border-blue-500" : ""}`}
       {...props}
     />
   );
@@ -159,7 +160,7 @@ const OperationCodeSelect = memo(({
   
   return (
     <Select value={validValue} onValueChange={handleChange}>
-      <SelectTrigger className={`h-8 ${isModified ? 'border-blue-500' : ''}`}>
+      <SelectTrigger className={`h-9 border-0 bg-transparent focus:border-blue-500 focus:bg-white ${isModified ? 'border border-blue-500' : ''}`}>
         <SelectValue placeholder="Select operation">
           {displayLabel}
         </SelectValue>
@@ -205,7 +206,7 @@ const PartTypeSelect = memo(({
   
   return (
     <Select value={validValue} onValueChange={handleChange}>
-      <SelectTrigger className={`h-8 ${isModified ? 'border-blue-500' : ''}`}>
+      <SelectTrigger className={`h-9 border-0 bg-transparent focus:border-blue-500 focus:bg-white ${isModified ? 'border border-blue-500' : ''}`}>
         <SelectValue placeholder="Select type">
           {displayLabel}
         </SelectValue>
@@ -629,7 +630,25 @@ export function EditableEstimateLinesTable({ estimate, claimId, onLinesChange }:
 
       {/* Table */}
       <div className="rounded-md border">
-        <Table>
+        <style jsx>{`
+          /* Excel-like table styling fixes */
+          .estimate-table td {
+            padding: 6px 8px !important; /* More vertical space than default p-2 */
+            vertical-align: middle;
+          }
+          .estimate-table th {
+            padding: 8px 8px !important;
+            background: #f8fafc;
+            border-bottom: 2px solid #e2e8f0;
+          }
+          .estimate-table input:focus {
+            box-shadow: inset 0 0 0 1px #3b82f6;
+          }
+          .estimate-table .select-trigger:focus-within {
+            box-shadow: inset 0 0 0 1px #3b82f6;
+          }
+        `}</style>
+        <Table className="estimate-table">
           <TableHeader>
             <TableRow>
               <TableHead 

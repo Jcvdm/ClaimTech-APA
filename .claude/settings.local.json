@@ -23,7 +23,13 @@
       "Bash(find:*)",
       "Bash(cp:*)",
       "mcp__supabase__execute_sql",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git checkout:*)",
+      "Bash(npm run:*)",
+      "Bash(node:*)",
+      "Bash(timeout 15s npm run dev)",
+      "Bash(git merge:*)",
+      "mcp__supabase__get_project_url"
     ],
     "deny": []
   },
