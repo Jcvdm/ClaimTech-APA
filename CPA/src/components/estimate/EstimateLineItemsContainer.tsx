@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { type Estimate, type EstimateLine } from '@/lib/api/domains/estimates/types';
-import { useEstimateLines } from '@/lib/api/domains/estimates/hooks';
+// Note: Removed useEstimateLines import - data now managed by EditableEstimateLinesTable
 import { useEstimateSession } from '@/hooks/useEstimateSession';
 import { useKeyboardNavigation, type CellCoordinate } from '@/hooks/useKeyboardNavigation';
 
@@ -14,11 +14,16 @@ import { EditableEstimateLinesTable } from '../../app/claims/[id]/tabs/estimate/
 import { EstimateLineStatusBar } from './EstimateLineStatusBar';
 import { EstimateLineValidationPanel } from './EstimateLineValidationPanel';
 
+// Error Boundaries
+import { SessionRecoveryBoundary } from './error/SessionRecoveryBoundary';
+import { CacheFailureBoundary } from './error/CacheFailureBoundary';
+
 // Context
 import { EstimateLineProvider } from './EstimateLineContext';
 
 interface EstimateLineItemsContainerProps {
   estimate: Estimate;
+  claimId: string;
   readonly?: boolean;
   maxRows?: number;
   enableBulkActions?: boolean;
@@ -29,6 +34,7 @@ interface EstimateLineItemsContainerProps {
 
 export function EstimateLineItemsContainer({
   estimate,
+  claimId,
   readonly = false,
   maxRows = 1000,
   enableBulkActions = true,
@@ -36,26 +42,30 @@ export function EstimateLineItemsContainer({
   onSelectionChange,
   onLinesChange
 }: EstimateLineItemsContainerProps) {
-  // Fetch estimate lines
-  const {
-    data: lines = [],
-    isLoading,
-    isError,
-    error,
-    refetch
-  } = useEstimateLines(estimate.id);
-
   // Selection state
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const [focusedCell, setFocusedCell] = useState<CellCoordinate | null>(null);
 
-  // Session-based state management
-  const session = useEstimateSession({
-    estimateId: estimate.id,
-    serverLines: lines,
-    onSyncSuccess: () => refetch(),
-    autoSyncInterval: 30000
-  });
+  // Session management is handled internally by EditableEstimateLinesTable
+  // For readonly mode, we provide stable defaults since we don't need session state
+  const defaultSession = useMemo(() => ({
+    displayLines: [],
+    hasUnsavedChanges: false,
+    syncStatus: 'idle' as const,
+    lastActivityTime: Date.now(),
+    isLoading: false,
+    isLinesLoading: false,
+    syncNow: () => Promise.resolve(),
+  }), []);
+  
+  // We only need session data for readonly mode - EditableEstimateLinesTable manages its own session
+  const session = readonly ? defaultSession : defaultSession;
+
+  // Get data from session for components that need it
+  const lines = session.displayLines || [];
+  const isLoading = session.isLoading || session.isLinesLoading;
+  const isError = false; // Session handles error states internally
+  const error = null;
 
   // Handle unsaved changes on page unload
   useEffect(() => {
@@ -133,32 +143,56 @@ export function EstimateLineItemsContainer({
           {error?.message || 'An unexpected error occurred'}
         </div>
         <button
-          onClick={() => refetch()}
+          onClick={() => window.location.reload()}
           className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
         >
-          Retry
+          Refresh Page
         </button>
       </div>
     );
   }
 
   return (
-    <EstimateLineProvider
-      value={{
-        estimate,
-        lines,
-        session,
-        keyboardNav,
-        readonly,
-        selectedRows,
-        focusedCell,
-        isLoading,
+    <SessionRecoveryBoundary
+      estimateId={estimate.id}
+      onSessionRecovered={(recoveredLines) => {
+        console.log('[EstimateLineItemsContainer] Session recovered with', recoveredLines.length, 'lines');
+        onLinesChange?.(recoveredLines);
+      }}
+      onRecoveryFailed={(error) => {
+        console.error('[EstimateLineItemsContainer] Session recovery failed:', error);
       }}
     >
-      <div 
-        className="estimate-lines-container bg-white rounded-lg shadow-sm border"
-        {...keyboardNav.containerProps}
+      <CacheFailureBoundary
+        cacheKeys={[
+          `estimate_${estimate.id}`,
+          `estimate_lines_${estimate.id}`,
+          `claim_${claimId}`
+        ]}
+        fallbackData={lines}
+        onCacheRecovered={() => {
+          console.log('[EstimateLineItemsContainer] Cache recovered');
+        }}
+        onFallbackUsed={() => {
+          console.log('[EstimateLineItemsContainer] Using fallback data');
+        }}
       >
+        <EstimateLineProvider
+          value={{
+            estimate,
+            lines,
+            session,
+            keyboardNav,
+            readonly,
+            selectedRows,
+            focusedCell,
+            isLoading,
+          }}
+        >
+          <div 
+            className="estimate-lines-container bg-white rounded-lg shadow-sm border"
+            {...keyboardNav.containerProps}
+          >
         <EstimateLineHeader estimate={estimate} />
         
 {/* Only show toolbar for read-only mode or when using the old table */}
@@ -186,6 +220,7 @@ export function EstimateLineItemsContainer({
           ) : (
             <EditableEstimateLinesTable
               estimate={estimate}
+              claimId={claimId}
               onLinesChange={onLinesChange}
             />
           )}
@@ -314,6 +349,7 @@ export function EstimateLineItemsContainer({
               {/* Mobile-optimized editable table */}
               <EditableEstimateLinesTable
                 estimate={estimate}
+                claimId={claimId}
                 onLinesChange={onLinesChange}
               />
             </div>
@@ -327,7 +363,9 @@ export function EstimateLineItemsContainer({
             <EstimateLineValidationPanel />
           </>
         )}
-      </div>
-    </EstimateLineProvider>
+          </div>
+        </EstimateLineProvider>
+      </CacheFailureBoundary>
+    </SessionRecoveryBoundary>
   );
 }

@@ -5,6 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { RefreshCw } from "lucide-react";
 import { type Estimate, type EstimateLine } from "@/lib/api/domains/estimates/types";
 import { useLiveEstimateTotals } from "@/hooks/useLiveEstimateTotals";
+import { useEstimateSessionStore } from "@/stores/estimateSessionStore";
+
+// Note: This component uses DAL through the session store (useEstimateSessionStore)
+// No direct tRPC calls needed - all data comes through the DAL session management
 
 interface EstimateSummaryProps {
   estimate: Estimate;
@@ -17,15 +21,25 @@ export function EstimateSummary({
   liveLines, 
   showLiveIndicator = true 
 }: EstimateSummaryProps) {
-  // Get live totals when live lines are provided
-  const { totals: liveTotals, hasUnsavedChanges } = useLiveEstimateTotals(
+  // Get display lines directly from session store if this is the active estimate
+  const { currentEstimateId, getDisplayLines, hasUnsavedChanges } = useEstimateSessionStore();
+  
+  // Use provided liveLines, or get from session store if active, or fallback to empty
+  const linesToUse = liveLines || 
+    (currentEstimateId === estimate.id ? getDisplayLines() : []);
+  
+  // Get live totals when live lines are available
+  const { totals: liveTotals } = useLiveEstimateTotals(
     estimate, 
-    liveLines, 
+    linesToUse, 
     { debug: false }
   );
+  
+  // Check if we have unsaved changes for this estimate
+  const hasLocalUnsavedChanges = currentEstimateId === estimate.id ? hasUnsavedChanges() : false;
 
   // Use live totals if available, otherwise fall back to saved estimate totals
-  const displayTotals = liveLines ? liveTotals : {
+  const displayTotals = linesToUse ? liveTotals : {
     subtotal_parts: estimate.subtotal_parts || 0,
     subtotal_labor: estimate.subtotal_labor || 0,
     subtotal_paint_materials: estimate.subtotal_paint_materials || 0,
@@ -41,8 +55,8 @@ export function EstimateSummary({
   console.log('[EstimateSummary] Rendering with:', {
     estimateId: estimate.id,
     hasLiveLines: !!liveLines,
-    liveLineCount: liveLines?.length || 0,
-    hasUnsavedChanges,
+    liveLineCount: linesToUse?.length || 0,
+    hasLocalUnsavedChanges,
     displayTotalAmount: displayTotals.total_amount,
     liveTotalAmount: liveTotals.total_amount,
     savedTotalAmount: estimate.total_amount || 0,
@@ -61,7 +75,7 @@ export function EstimateSummary({
           <CardTitle>Estimate Summary</CardTitle>
           {liveLines && showLiveIndicator && (
             <div className="flex items-center gap-2">
-              {hasUnsavedChanges && (
+              {hasLocalUnsavedChanges && (
                 <Badge variant="secondary" className="text-xs">
                   <RefreshCw className="h-3 w-3 mr-1" />
                   Live
@@ -148,7 +162,7 @@ export function EstimateSummary({
               </div>
               <div className="flex justify-between font-bold">
                 <span>Total:</span>
-                <span className={liveLines && hasUnsavedChanges ? "text-blue-600 font-semibold" : ""}>
+                <span className={liveLines && hasLocalUnsavedChanges ? "text-blue-600 font-semibold" : ""}>
                   {formatNumber(displayTotals.total_amount)}
                 </span>
               </div>

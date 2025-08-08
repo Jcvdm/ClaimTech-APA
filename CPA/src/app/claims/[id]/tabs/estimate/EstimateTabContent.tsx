@@ -5,51 +5,45 @@ import { useParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus, ClipboardList } from "lucide-react";
-import { useEstimate, useCreateEstimate, useEstimateLines } from "@/lib/api/domains/estimates/hooks";
+import { useEstimate, useCreateEstimate } from "@/lib/api/domains/estimates/hooks";
+import { useEstimatePrefetching } from "@/lib/api/domains/estimates/estimateCache";
 import { EstimateForm } from "./EstimateForm";
 import { EstimateLineItemsContainer } from "@/components/estimate/EstimateLineItemsContainer";
 import { EstimateErrorBoundary } from "@/components/estimate/error/EstimateErrorBoundary";
 import { NotificationContainer } from "@/components/estimate/error/NotificationContainer";
 import { useErrorNotifications } from "@/components/estimate/error/ErrorNotification";
+import { SessionRecoveryBoundary } from "@/components/estimate/error/SessionRecoveryBoundary";
+import { CacheFailureBoundary } from "@/components/estimate/error/CacheFailureBoundary";
 import { EstimateSummary } from "./EstimateSummary";
 import { SyncStatusIndicator } from "@/components/ui/SyncStatusIndicator";
 
 export function EstimateTabContent() {
   const { id: claimId } = useParams();
   const { data: estimate, isLoading, refetch } = useEstimate(claimId as string);
-  const createEstimate = useCreateEstimate();
   const [showCreateForm, setShowCreateForm] = useState(false);
 
-  // State for live estimate lines (updated as user edits)
-  const [liveEstimateLines, setLiveEstimateLines] = useState<EstimateLine[]>([]);
+  // DAL prefetching - simplified initialization
+  const { prefetchForEstimateTab, markSessionActive, markSessionInactive } = useEstimatePrefetching();
 
-  // Fetch estimate lines for initial data
-  const { data: estimateLines = [] } = useEstimateLines(
-    estimate?.id || "", 
-    { enabled: !!estimate?.id }
-  );
-
-  // Initialize live lines when server data loads
+  // Single useEffect for DAL initialization and session management
   useEffect(() => {
-    if (estimateLines.length > 0 && liveEstimateLines.length === 0) {
-      console.log("[EstimateTabContent] Initializing live lines with server data:", estimateLines.length);
-      setLiveEstimateLines(estimateLines);
+    if (claimId && typeof claimId === 'string') {
+      console.log('[EstimateTabContent] Initializing DAL for claim:', claimId);
+      prefetchForEstimateTab(claimId, { priority: true });
+      
+      if (estimate?.id) {
+        markSessionActive(estimate.id);
+        return () => markSessionInactive(estimate.id);
+      }
     }
-  }, [estimateLines, liveEstimateLines.length]);
+  }, [claimId, estimate?.id]); // Removed function dependencies that cause infinite loop
   
-  // Error notifications for the estimate functionality
-  const {
-    notifications,
-    removeNotification,
-    addError,
-    addSuccess,
-    addWarning
-  } = useErrorNotifications();
+  // Error notifications
+  const { notifications, removeNotification, addError } = useErrorNotifications();
 
-  // Function to handle cancellation or completion of the form
+  // Simplified form close handler
   const handleFormClose = () => {
     setShowCreateForm(false);
-    // Explicitly refetch the estimate data to ensure we have the latest
     refetch();
   };
 
@@ -106,33 +100,36 @@ export function EstimateTabContent() {
       <div className="space-y-6">
         <h2 className="text-xl font-semibold">Repair Estimate</h2>
 
-        {/* Estimate Lines - New Modular Component */}
-        <EstimateErrorBoundary
-          onError={(error, errorInfo) => {
-            console.error('Estimate component error:', error, errorInfo);
-            addError('Component Error', `An error occurred: ${error.message}`);
-          }}
+        {/* Estimate Lines - New Modular Component with Enhanced Error Boundaries */}
+        <SessionRecoveryBoundary
+          estimateId={estimate.id}
+          claimId={claimId as string}
         >
-          <EstimateLineItemsContainer
-            estimate={estimate}
-            readonly={false}
-            maxRows={1000}
-            enableBulkActions={true}
-            enableKeyboardNavigation={true}
-            onSelectionChange={(selectedIds) => {
-              console.log('Selection changed:', selectedIds);
-            }}
-            onLinesChange={(lines) => {
-              console.log('[EstimateTabContent] Received live lines update:', lines.length);
-              setLiveEstimateLines(lines);
-            }}
-          />
-        </EstimateErrorBoundary>
+          <CacheFailureBoundary
+            estimateId={estimate.id}
+            claimId={claimId as string}
+          >
+            <EstimateErrorBoundary
+              onError={(error, errorInfo) => {
+                console.error('Estimate component error:', error, errorInfo);
+                addError('Component Error', `An error occurred: ${error.message}`);
+              }}
+            >
+              <EstimateLineItemsContainer
+                estimate={estimate}
+                claimId={claimId as string}
+                readonly={false}
+                maxRows={1000}
+                enableBulkActions={true}
+                enableKeyboardNavigation={true}
+              />
+            </EstimateErrorBoundary>
+          </CacheFailureBoundary>
+        </SessionRecoveryBoundary>
 
         {/* Estimate Summary with Live Totals */}
         <EstimateSummary 
           estimate={estimate} 
-          liveLines={liveEstimateLines}
           showLiveIndicator={true}
         />
       </div>

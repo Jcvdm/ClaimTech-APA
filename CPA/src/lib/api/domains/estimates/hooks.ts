@@ -207,10 +207,12 @@ export function useEstimateLines(estimateId: string, options?: any) {
       console.error("[useEstimateLines] Error fetching lines:", error);
       options?.onError?.(error);
     },
-    // Force refetch on mount to ensure we have the latest data
-    refetchOnMount: true,
-    // Reduce stale time to ensure we get fresh data
-    staleTime: 0
+    // Optimize query behavior to reduce unnecessary API calls
+    refetchOnMount: false,
+    // Increase stale time to prevent unnecessary refetches - session store handles consistency
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    // Don't refetch on window focus since we have optimistic updates
+    refetchOnWindowFocus: false
   });
 
   return query;
@@ -361,12 +363,8 @@ export function useAddEstimateLine() {
           return updated;
         });
 
-        // Invalidate the estimate lines query
-        queryClient.invalidateQueries({
-          queryKey: QUERY_KEYS.LINES_BY_ESTIMATE_ID(data.estimate_id)
-        });
-
-        // Invalidate the estimate query to update totals
+        // Note: Removed query invalidations - optimistic updates and session store handle consistency
+        // Only invalidate estimate totals if needed for summary calculations
         queryClient.invalidateQueries({
           queryKey: QUERY_KEYS.BY_ID(data.estimate_id)
         });
@@ -539,12 +537,8 @@ export function useUpdateEstimateLine() {
           return updated;
         });
 
-        // Invalidate the estimate lines query
-        queryClient.invalidateQueries({
-          queryKey: QUERY_KEYS.LINES_BY_ESTIMATE_ID(data.estimate_id)
-        });
-
-        // Invalidate the estimate query to update totals
+        // Note: Removed query invalidations - optimistic updates and session store handle consistency
+        // Only invalidate estimate totals if needed for summary calculations
         queryClient.invalidateQueries({
           queryKey: QUERY_KEYS.BY_ID(data.estimate_id)
         });
@@ -751,12 +745,8 @@ export function useDeleteEstimateLine() {
         });
 
         if (context?.estimateId) {
-          // Invalidate the estimate lines query
-          queryClient.invalidateQueries({
-            queryKey: QUERY_KEYS.LINES_BY_ESTIMATE_ID(context.estimateId)
-          });
-
-          // Invalidate the estimate query to update totals
+          // Note: Removed query invalidations - optimistic updates and session store handle consistency
+          // Only invalidate estimate totals if needed for summary calculations
           queryClient.invalidateQueries({
             queryKey: QUERY_KEYS.BY_ID(context.estimateId)
           });

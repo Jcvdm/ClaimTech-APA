@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, memo } from "react";
+import { useState, useEffect, useCallback, useMemo, memo, useRef } from "react";
 import { toast } from "sonner";
 import {
   Table,
@@ -24,16 +24,17 @@ import { Badge } from "@/components/ui/badge";
 import {
   type Estimate,
   type EstimateLine,
-  type EstimateLineCreate,
   OperationCode,
   PartType
 } from "@/lib/api/domains/estimates/types";
-import { useEstimateLines, useAddEstimateLine, useUpdateEstimateLine, useDeleteEstimateLine } from "@/lib/api/domains/estimates/hooks";
 import { useEstimateSession } from "@/hooks/useEstimateSession";
+import { useEstimateSessionStore } from "@/stores/estimateSessionStore";
 import { useColumnResize } from "@/hooks/useColumnResize";
+import { useDeleteEstimateLine } from "@/lib/api/domains/estimates/hooks";
 
 interface EditableEstimateLinesTableProps {
   estimate: Estimate;
+  claimId: string;
   onLinesChange?: (lines: EstimateLine[]) => void;
 }
 
@@ -88,20 +89,38 @@ const TableCellInput = memo(({
   [key: string]: any;
 }) => {
   const [localValue, setLocalValue] = useState(value?.toString() || "");
+  const isMountedRef = useRef(true);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
-    setLocalValue(value?.toString() || "");
+    if (isMountedRef.current) {
+      setLocalValue(value?.toString() || "");
+    }
   }, [value]);
 
   const handleBlur = useCallback(() => {
-    onChange(localValue);
+    if (isMountedRef.current) {
+      onChange(localValue);
+    }
   }, [localValue, onChange]);
+
+  const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    if (isMountedRef.current) {
+      setLocalValue(e.target.value);
+    }
+  }, []);
 
   return (
     <Input
       type={type}
       value={localValue}
-      onChange={(e) => setLocalValue(e.target.value)}
+      onChange={handleChange}
       onBlur={handleBlur}
       placeholder={placeholder}
       className={`h-8 ${isModified ? "border-blue-500" : ""}`}
@@ -127,16 +146,22 @@ const OperationCodeSelect = memo(({
   // Ensure value is valid - be more permissive initially
   const validValue = value || '';
   
-  const handleChange = (newValue: string) => {
+  // Cache the display label to prevent recalculation on every render
+  const displayLabel = useMemo(() => {
+    if (!validValue) return "Select operation";
+    return OPERATION_CODES_SHORT.find(op => op.value === validValue)?.label || "Select operation";
+  }, [validValue]);
+  
+  const handleChange = useCallback((newValue: string) => {
     console.log('[OperationCodeSelect] onChange triggered with:', newValue);
     onChange(newValue);
-  };
+  }, [onChange]);
   
   return (
     <Select value={validValue} onValueChange={handleChange}>
       <SelectTrigger className={`h-8 ${isModified ? 'border-blue-500' : ''}`}>
         <SelectValue placeholder="Select operation">
-          {validValue ? OPERATION_CODES_SHORT.find(op => op.value === validValue)?.label : "Select operation"}
+          {displayLabel}
         </SelectValue>
       </SelectTrigger>
       <SelectContent>
@@ -167,16 +192,22 @@ const PartTypeSelect = memo(({
   // Ensure value is valid - be more permissive initially
   const validValue = value || '';
   
-  const handleChange = (newValue: string) => {
+  // Cache the display label to prevent recalculation on every render
+  const displayLabel = useMemo(() => {
+    if (!validValue) return "Select type";
+    return PART_TYPE_OPTIONS_SHORT.find(type => type.value === validValue)?.label || "Select type";
+  }, [validValue]);
+  
+  const handleChange = useCallback((newValue: string) => {
     console.log('[PartTypeSelect] onChange triggered with:', newValue);
     onChange(newValue);
-  };
+  }, [onChange]);
   
   return (
     <Select value={validValue} onValueChange={handleChange}>
       <SelectTrigger className={`h-8 ${isModified ? 'border-blue-500' : ''}`}>
         <SelectValue placeholder="Select type">
-          {validValue ? PART_TYPE_OPTIONS_SHORT.find(type => type.value === validValue)?.label : "Select type"}
+          {displayLabel}
         </SelectValue>
       </SelectTrigger>
       <SelectContent>
@@ -197,12 +228,12 @@ const EstimateLineRow = memo(({
   line,
   onFieldUpdate,
   onDeleteLine,
-  isFieldModified
+  isLineModified
 }: {
   line: EstimateLine;
   onFieldUpdate: (lineId: string, field: keyof EstimateLine, value: any) => void;
   onDeleteLine: (lineId: string) => void;
-  isFieldModified: (lineId: string, field: keyof EstimateLine) => boolean;
+  isLineModified: (lineId: string) => boolean;
 }) => {
   const handleOperationCodeChange = useCallback((value: string) => {
     console.log('[EstimateLineRow] Operation code change:', value, 'for line:', line.id);
@@ -255,10 +286,10 @@ const EstimateLineRow = memo(({
       <TableCell>{line.sequence_number}</TableCell>
       <TableCell>
         <OperationCodeSelect
-          key={`op-${line.id}-${line.operation_code}`}
+          key={`op-${line.id}`}
           value={line.operation_code}
           onChange={handleOperationCodeChange}
-          isModified={isFieldModified(line.id, 'operation_code')}
+          isModified={isLineModified(line.id)}
         />
       </TableCell>
       <TableCell>
@@ -266,15 +297,15 @@ const EstimateLineRow = memo(({
           value={line.description}
           onChange={handleDescriptionChange}
           placeholder="Enter description"
-          isModified={isFieldModified(line.id, 'description')}
+          isModified={isLineModified(line.id)}
         />
       </TableCell>
       <TableCell>
         <PartTypeSelect
-          key={`pt-${line.id}-${line.part_type}`}
+          key={`pt-${line.id}`}
           value={line.part_type}
           onChange={handlePartTypeChange}
-          isModified={isFieldModified(line.id, 'part_type')}
+          isModified={isLineModified(line.id)}
         />
       </TableCell>
       <TableCell>
@@ -282,7 +313,7 @@ const EstimateLineRow = memo(({
           value={line.part_number}
           onChange={handlePartNumberChange}
           placeholder="Part #"
-          isModified={isFieldModified(line.id, 'part_number')}
+          isModified={isLineModified(line.id)}
         />
       </TableCell>
       <TableCell>
@@ -291,7 +322,7 @@ const EstimateLineRow = memo(({
           value={line.part_cost}
           onChange={handlePartCostChange}
           placeholder="0.00"
-          isModified={isFieldModified(line.id, 'part_cost')}
+          isModified={isLineModified(line.id)}
         />
       </TableCell>
       <TableCell>
@@ -300,7 +331,7 @@ const EstimateLineRow = memo(({
           value={line.quantity}
           onChange={handleQuantityChange}
           placeholder="1"
-          isModified={isFieldModified(line.id, 'quantity')}
+          isModified={isLineModified(line.id)}
         />
       </TableCell>
       <TableCell>
@@ -309,7 +340,7 @@ const EstimateLineRow = memo(({
           value={line.strip_fit_hours}
           onChange={handleStripFitHoursChange}
           placeholder="0.0"
-          isModified={isFieldModified(line.id, 'strip_fit_hours')}
+          isModified={isLineModified(line.id)}
         />
       </TableCell>
       <TableCell>
@@ -318,7 +349,7 @@ const EstimateLineRow = memo(({
           value={line.repair_hours}
           onChange={handleRepairHoursChange}
           placeholder="0.0"
-          isModified={isFieldModified(line.id, 'repair_hours')}
+          isModified={isLineModified(line.id)}
         />
       </TableCell>
       <TableCell>
@@ -327,7 +358,7 @@ const EstimateLineRow = memo(({
           value={line.paint_hours}
           onChange={handlePaintHoursChange}
           placeholder="0.0"
-          isModified={isFieldModified(line.id, 'paint_hours')}
+          isModified={isLineModified(line.id)}
         />
       </TableCell>
       <TableCell>
@@ -336,7 +367,7 @@ const EstimateLineRow = memo(({
           value={line.sublet_cost}
           onChange={handleSubletCostChange}
           placeholder="0.00"
-          isModified={isFieldModified(line.id, 'sublet_cost')}
+          isModified={isLineModified(line.id)}
         />
       </TableCell>
       <TableCell>
@@ -361,8 +392,8 @@ const isValidUUID = (str: string): boolean => {
   return uuidRegex.test(str);
 };
 
-export function EditableEstimateLinesTable({ estimate, onLinesChange }: EditableEstimateLinesTableProps) {
-  console.log("[EditableEstimateLinesTable] Rendering with estimate:", estimate);
+export function EditableEstimateLinesTable({ estimate, claimId, onLinesChange }: EditableEstimateLinesTableProps) {
+  console.log("[EditableEstimateLinesTable] Rendering with estimate:", estimate, "claimId:", claimId);
 
   // Early return if estimate is not provided or ID is invalid
   if (!estimate || !estimate.id || !isValidUUID(estimate.id)) {
@@ -378,31 +409,38 @@ export function EditableEstimateLinesTable({ estimate, onLinesChange }: Editable
     );
   }
 
-  // Fetch estimate lines
-  const {
-    data: serverLines = [],
-    isLoading,
-    isError,
-    error,
-    refetch
-  } = useEstimateLines(estimate.id);
+  // Use DAL-powered session management - no more direct tRPC calls
+  const session = useEstimateSession({
+    estimateId: estimate.id,
+    claimId: claimId
+  });
 
-  // Use the new session-based state management
+  // Use delete mutation for real line deletions
+  const deleteLineMutation = useDeleteEstimateLine();
+
   const {
     displayLines,
     hasUnsavedChanges,
     syncStatus,
+    lastActivityTime,
     updateField,
+    addOptimisticLine,
+    replaceOptimisticLine,
+    removeLine,
     syncNow,
-    discardChanges,
-    isFieldModified,
-    getOriginalValue
-  } = useEstimateSession({
-    estimateId: estimate.id,
-    serverLines,
-    onSyncSuccess: () => refetch(),
-    autoSyncInterval: 30000 // Auto-sync every 30 seconds
-  });
+    trackActivity,
+    isLineModified,
+    pendingChangesCount,
+    isLoading,
+    isLinesLoading
+  } = session;
+
+  // Removed problematic useEffect that was causing infinite loops
+  // Parent components can access session data through other means if needed
+  // The session object was changing on every render, causing circular dependencies
+
+  // Combined loading state from DAL
+  const isDataLoading = isLoading || isLinesLoading;
 
   // Column resizing functionality
   const {
@@ -430,123 +468,98 @@ export function EditableEstimateLinesTable({ estimate, onLinesChange }: Editable
     maxWidth: 400
   });
 
-  // Mutations
-  const addLine = useAddEstimateLine();
-  const updateLine = useUpdateEstimateLine();
-  const deleteLine = useDeleteEstimateLine();
+  // DAL handles all mutations and background sync - no direct tRPC calls needed
 
-  // Simple debounced sync (2 seconds)
-  const [syncTimer, setSyncTimer] = useState<NodeJS.Timeout | null>(null);
-
-  const debouncedSync = useCallback(() => {
-    if (syncTimer) clearTimeout(syncTimer);
-    
-    const timer = setTimeout(async () => {
-      if (hasUnsavedChanges && syncStatus === 'idle') {
-        await syncNow();
-      }
-    }, 2000); // Simple 2-second delay
-
-    setSyncTimer(timer);
-  }, [hasUnsavedChanges, syncStatus, syncNow, syncTimer]);
-
-  // Handle field update
+  // Handle field update with immediate UI response
   const handleFieldUpdate = useCallback((lineId: string, field: keyof EstimateLine, value: any) => {
     console.log(`[EditableEstimateLinesTable] Updating ${String(field)} for line ${lineId}:`, value);
     
-    // Update in session store
+    // Track activity and update field immediately
+    trackActivity();
     updateField(lineId, field, value);
     
-    // For dropdown changes, sync immediately instead of debounced
-    if (field === 'operation_code' || field === 'part_type') {
-      console.log(`[EditableEstimateLinesTable] Immediate sync for dropdown field: ${String(field)}`);
-      syncNow();
-    } else {
-      // Trigger debounced sync for other fields
-      debouncedSync();
-    }
-  }, [updateField, debouncedSync, syncNow]);
+    console.log(`[EditableEstimateLinesTable] Field updated optimistically - UI responsive, background sync will handle persistence`);
+  }, [trackActivity, updateField]);
 
-  // Add new line with optimistic updates
-  const handleAddLine = useCallback(async () => {
+  // Add new line with optimistic updates handled entirely by DAL
+  const handleAddLine = useCallback(() => {
     const tempId = `temp-${Date.now()}`;
+    const nextSequence = displayLines.length + 1;
     
-    try {
-      // Create optimistic new line
-      const newLine: EstimateLineCreate = {
-        estimate_id: estimate.id,
-        sequence_number: displayLines.length + 1,
-        description: "",
-        operation_code: OperationCode.REPAIR,
-        quantity: 1,
-        is_included: true,
-      };
+    console.log("[EditableEstimateLinesTable] Adding optimistic line with temp ID:", tempId);
+    
+    // Create optimistic line for immediate display
+    const optimisticLine: EstimateLine = {
+      id: tempId,
+      estimate_id: estimate.id,
+      damage_id: null,
+      sequence_number: nextSequence,
+      description: "",
+      operation_code: OperationCode.REPAIR,
+      part_type: null,
+      part_number: null,
+      part_cost: null,
+      quantity: 1,
+      strip_fit_hours: null,
+      repair_hours: null,
+      paint_hours: null,
+      sublet_cost: null,
+      is_included: true,
+      line_notes: null,
+      calculated_part_total: null,
+      calculated_labor_total: null,
+      calculated_paint_material_total: null,
+      calculated_sublet_total: null,
+      calculated_line_total: null,
+      created_at: new Date(),
+      updated_at: new Date(),
+    };
 
-      // Show immediate feedback
-      toast.success("Adding new line...");
+    // Add to session store immediately for instant UI display
+    trackActivity();
+    addOptimisticLine(tempId, optimisticLine);
+    
+    // DAL background sync will handle server creation automatically
+    toast.success("New line added");
+    console.log("[EditableEstimateLinesTable] Optimistic line added - DAL will sync to server");
+  }, [estimate.id, displayLines.length, trackActivity, addOptimisticLine]);
 
-      // Use optimistic update - don't wait for response
-      addLine.mutate(newLine, {
-        onSuccess: (data) => {
-          // Only refetch to get the actual ID and any server-computed fields
-          refetch();
-          toast.success("New line added successfully");
-        },
-        onError: (error) => {
-          console.error("[EditableEstimateLinesTable] Error adding line:", error);
-          toast.error("Failed to add new line");
-          // Refetch to revert optimistic update
-          refetch();
-        }
-      });
-    } catch (error) {
-      console.error("[EditableEstimateLinesTable] Error adding line:", error);
-      toast.error("Failed to add new line");
-    }
-  }, [estimate.id, displayLines.length, addLine, refetch]);
-
-  // Delete line
+  // Delete line - handle both temp and real IDs
   const handleDeleteLine = useCallback(async (lineId: string) => {
     if (!confirm("Are you sure you want to delete this line?")) return;
 
-    try {
-      await deleteLine.mutateAsync({ id: lineId });
+    console.log("[EditableEstimateLinesTable] Deleting line:", lineId);
+    
+    // Check if it's a real UUID or temp ID
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(lineId);
+    
+    if (isUUID) {
+      // For real IDs, call server deletion and remove from UI
+      try {
+        trackActivity();
+        removeLine(lineId); // Remove from UI immediately for responsiveness
+        await deleteLineMutation.mutateAsync({ id: lineId });
+        console.log("[EditableEstimateLinesTable] Line deleted from server:", lineId);
+      } catch (error) {
+        console.error("[EditableEstimateLinesTable] Failed to delete line from server:", error);
+        toast.error("Failed to delete line from server");
+        // Re-add line to UI if server deletion failed
+        // Note: This would require fetching the line data again
+      }
+    } else {
+      // For temp IDs, just remove from local store
+      trackActivity();
+      removeLine(lineId);
       toast.success("Line deleted");
-      refetch();
-    } catch (error) {
-      console.error("[EditableEstimateLinesTable] Error deleting line:", error);
-      toast.error("Failed to delete line");
+      console.log("[EditableEstimateLinesTable] Temp line removed from UI:", lineId);
     }
-  }, [deleteLine, refetch]);
+  }, [trackActivity, removeLine, deleteLineMutation]);
 
-  // Notify parent of line changes
-  useEffect(() => {
-    if (onLinesChange) {
-      console.log("[EditableEstimateLinesTable] Notifying parent of lines change:", displayLines.length);
-      onLinesChange(displayLines);
-    }
-  }, [displayLines, onLinesChange]);
+  // Removed problematic useEffect that was causing infinite loop
+  // Parent can access lines through props/state without needing notification
+  // This was triggering on every displayLines change and creating circular updates
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (syncTimer) clearTimeout(syncTimer);
-    };
-  }, [syncTimer]);
-
-  if (isError) {
-    console.error("[EditableEstimateLinesTable] Error:", error);
-    return (
-      <div className="flex items-center justify-center p-8">
-        <div className="text-center">
-          <div className="text-red-600 mb-2">Error loading estimate lines</div>
-          <Button onClick={() => refetch()} variant="outline" size="sm">
-            Retry
-          </Button>
-        </div>
-      </div>
-    );
-  }
+  // DAL handles all error states through the session hook
 
   return (
     <div className="space-y-4">
@@ -554,40 +567,60 @@ export function EditableEstimateLinesTable({ estimate, onLinesChange }: Editable
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">Estimate Lines</h3>
         <div className="flex items-center gap-2">
-          {hasUnsavedChanges && (
+          {/* DAL-powered status indicators */}
+          {hasUnsavedChanges && syncStatus === 'idle' && (
             <Badge variant="secondary" className="flex items-center gap-1">
               <AlertCircle className="h-3 w-3" />
-              Unsaved Changes
+              Will auto-save in background
             </Badge>
           )}
           {syncStatus === 'syncing' && (
             <Badge variant="default" className="flex items-center gap-1">
               <RefreshCw className="h-3 w-3 animate-spin" />
-              Saving...
+              Saving changes...
             </Badge>
           )}
           {syncStatus === 'error' && (
             <Badge variant="destructive" className="flex items-center gap-1">
               <X className="h-3 w-3" />
-              Sync Error
+              Save failed - retry
             </Badge>
           )}
+          {!hasUnsavedChanges && syncStatus === 'idle' && (
+            <Badge variant="default" className="flex items-center gap-1 bg-green-100 text-green-800">
+              ✓ All changes saved
+            </Badge>
+          )}
+          
+          {/* Action buttons */}
           {hasUnsavedChanges && (
             <Button
               variant="outline"
               size="sm"
-              onClick={discardChanges}
+              onClick={() => {
+                if (confirm('Are you sure you want to discard all unsaved changes?')) {
+                  useEstimateSessionStore.getState().resetSession();
+                  // DAL will reinitialize lines automatically
+                  toast.info('Changes discarded');
+                }
+              }}
+              className="text-xs"
             >
-              Discard Changes
+              Discard
             </Button>
           )}
-          {hasUnsavedChanges && syncStatus === 'idle' && (
+          {hasUnsavedChanges && (
             <Button
               variant="default"
               size="sm"
-              onClick={syncNow}
+              onClick={() => {
+                trackActivity(); // Reset activity timer
+                syncNow();
+              }}
+              disabled={syncStatus === 'syncing'}
+              className="text-xs"
             >
-              <Save className="h-4 w-4 mr-1" />
+              <Save className="h-3 w-3 mr-1" />
               Save Now
             </Button>
           )}
@@ -717,7 +750,7 @@ export function EditableEstimateLinesTable({ estimate, onLinesChange }: Editable
             </TableRow>
           </TableHeader>
           <TableBody>
-            {isLoading ? (
+            {isDataLoading ? (
               <TableRow>
                 <TableCell colSpan={12} className="text-center py-8">
                   Loading estimate lines...
@@ -736,7 +769,7 @@ export function EditableEstimateLinesTable({ estimate, onLinesChange }: Editable
                   line={line}
                   onFieldUpdate={handleFieldUpdate}
                   onDeleteLine={handleDeleteLine}
-                  isFieldModified={isFieldModified}
+                  isLineModified={isLineModified}
                 />
               ))
             )}

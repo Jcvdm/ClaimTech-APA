@@ -2,41 +2,48 @@
 
 import { useEffect, useCallback, useMemo } from 'react';
 import { useEstimateSessionStore } from '@/stores/estimateSessionStore';
+import { useHybridEstimateData, useHybridEstimateLines, useEstimatePrefetching } from '@/lib/api/domains/estimates/estimateCache';
+import { useEstimateBackgroundSync } from '@/hooks/useEstimateBackgroundSync';
 import { type EstimateLine } from '@/lib/api/domains/estimates/types';
 import { toast } from 'sonner';
-import { api } from '@/trpc/react';
 
 interface UseEstimateSessionOptions {
   estimateId: string;
-  serverLines: EstimateLine[];
+  claimId: string; // New: Required for DAL integration
+  serverLines?: EstimateLine[]; // Optional now - DAL provides fallback
   onSyncSuccess?: () => void;
   onSyncError?: (error: Error) => void;
-  autoSyncInterval?: number; // milliseconds, 0 to disable
 }
 
 interface UseEstimateSessionReturn {
-  // Data
+  // Data from DAL
+  estimate: any; // Estimate data from DAL
   displayLines: EstimateLine[];
   hasUnsavedChanges: boolean;
-  syncStatus: 'idle' | 'syncing' | 'error' | 'conflict';
+  syncStatus: 'idle' | 'syncing' | 'error';
+  lastActivityTime: number;
+  
+  // Loading states
+  isLoading: boolean;
+  isLinesLoading: boolean;
   
   // Actions
   updateField: (lineId: string, field: keyof EstimateLine, value: any) => void;
+  addOptimisticLine: (tempId: string, line: EstimateLine) => void;
+  replaceOptimisticLine: (tempId: string, realLine: EstimateLine) => void;
+  removeLine: (lineId: string) => void;
   syncNow: () => Promise<void>;
-  discardChanges: () => void;
-  resolveConflict: (lineId: string, field: string, useLocal: boolean) => void;
+  trackActivity: () => void;
   
-  // Status
-  isFieldModified: (lineId: string, field: keyof EstimateLine) => boolean;
-  getOriginalValue: (lineId: string, field: keyof EstimateLine) => any;
-  
-  // Additional UI information (for better status display)
+  // Status helpers
+  isLineModified: (lineId: string) => boolean;
   pendingChangesCount: number;
-  conflictCount: number;
-  modifiedLinesCount: number;
+  
+  // DAL integration
+  refreshFromServer: () => Promise<void>;
 }
 
-// UUID validation helper - same as in EditableEstimateLinesTable
+// UUID validation helper
 const isValidUUID = (str: string): boolean => {
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   return uuidRegex.test(str);
@@ -44,119 +51,173 @@ const isValidUUID = (str: string): boolean => {
 
 export function useEstimateSession({
   estimateId,
+  claimId,
   serverLines,
   onSyncSuccess,
-  onSyncError,
-  autoSyncInterval = 30000 // Default 30 seconds
+  onSyncError
 }: UseEstimateSessionOptions): UseEstimateSessionReturn {
   // Validate estimateId before proceeding
   if (!estimateId || !isValidUUID(estimateId)) {
     console.warn('[useEstimateSession] Invalid estimateId provided:', estimateId);
     // Return a "disabled" session state
     return {
+      estimate: null,
       displayLines: serverLines || [],
       hasUnsavedChanges: false,
       syncStatus: 'idle',
+      lastActivityTime: Date.now(),
+      isLoading: false,
+      isLinesLoading: false,
       updateField: () => console.warn('[useEstimateSession] Cannot update field - invalid estimate ID'),
+      addOptimisticLine: () => console.warn('[useEstimateSession] Cannot add line - invalid estimate ID'),
+      replaceOptimisticLine: () => console.warn('[useEstimateSession] Cannot replace line - invalid estimate ID'),
+      removeLine: () => console.warn('[useEstimateSession] Cannot remove line - invalid estimate ID'),
       syncNow: async () => console.warn('[useEstimateSession] Cannot sync - invalid estimate ID'),
-      discardChanges: () => console.warn('[useEstimateSession] Cannot discard - invalid estimate ID'),
-      resolveConflict: () => console.warn('[useEstimateSession] Cannot resolve conflict - invalid estimate ID'),
-      isFieldModified: () => false,
-      getOriginalValue: () => undefined,
+      trackActivity: () => {},
+      isLineModified: () => false,
       pendingChangesCount: 0,
-      conflictCount: 0,
-      modifiedLinesCount: 0
+      refreshFromServer: async () => console.warn('[useEstimateSession] Cannot refresh - invalid estimate ID')
     };
   }
+  // DAL hooks for data access
+  const estimateQuery = useHybridEstimateData(claimId, {
+    prefetchLines: true, // Auto-prefetch lines when estimate loads
+    enabled: !!claimId,
+  });
+  
+  const linesQuery = useHybridEstimateLines(estimateId, {
+    enabled: !!estimateId,
+  });
+  
+  // DAL prefetching and session management
+  const { 
+    prefetchForEstimateTab,
+    markSessionActive,
+    markSessionInactive,
+  } = useEstimatePrefetching();
+  
+  // Background sync engine
+  const { 
+    forceSyncNow,
+    syncMetrics,
+    isOnline 
+  } = useEstimateBackgroundSync();
+
+  // Session backup functionality - integrated directly
+  const createBackup = useCallback(() => {
+    try {
+      const sessionState = useEstimateSessionStore.getState();
+      if (sessionState.currentEstimateId === estimateId) {
+        const backupData = {
+          estimateId,
+          displayLines: Array.from(sessionState.displayLines.entries()),
+          pendingChanges: Array.from(sessionState.pendingChanges),
+          syncQueue: Array.from(sessionState.syncQueue.entries()),
+          timestamp: Date.now(),
+          version: '1.0'
+        };
+
+        localStorage.setItem(`estimate-session-backup-${estimateId}`, JSON.stringify(backupData));
+        console.log('[useEstimateSession] Session backup created');
+        return true;
+      }
+    } catch (error) {
+      console.error('[useEstimateSession] Failed to create backup:', error);
+    }
+    return false;
+  }, [estimateId]);
+
+  const clearBackup = useCallback(() => {
+    try {
+      localStorage.removeItem(`estimate-session-backup-${estimateId}`);
+      console.log('[useEstimateSession] Session backup cleared');
+    } catch (error) {
+      console.error('[useEstimateSession] Failed to clear backup:', error);
+    }
+  }, [estimateId]);
+
+  // Session store integration
   const {
     currentEstimateId,
-    serverData,
+    displayLines: storeDisplayLines,
     pendingChanges,
     syncStatus,
-    startSession,
-    endSession,
-    updateField: storeUpdateField,
-    syncChanges,
-    resolveConflict: storeResolveConflict,
-    getDisplayData,
+    lastActivityTime,
+    initializeLines,
+    updateLine,
+    addOptimisticLine,
+    replaceOptimisticLine,
+    removeLine,
+    getDisplayLines,
     hasUnsavedChanges,
-    clearPendingChanges
+    markAsSynced,
+    trackActivity,
+    setSyncStatus
   } = useEstimateSessionStore();
 
-  // Initialize session when component mounts or estimateId changes
-  useEffect(() => {
-    const initSession = async () => {
-      console.log('[useEstimateSession] Initializing session for estimate:', estimateId);
-      await startSession(estimateId, serverLines);
-      
-      // Show notification if there were unsaved changes
-      if (hasUnsavedChanges()) {
-        toast.info('Restored unsaved changes from previous session', {
-          action: {
-            label: 'Discard',
-            onClick: () => clearPendingChanges()
-          }
-        });
-      }
-    };
-
-    initSession();
-
-    // Cleanup on unmount
-    return () => {
-      console.log('[useEstimateSession] Cleaning up session');
-      // End the session to save any pending changes
-      endSession();
-    };
-  }, [estimateId, endSession]);
-
-  // Update server data when it changes (but preserve pending changes)
-  useEffect(() => {
-    if (currentEstimateId === estimateId && serverLines.length > 0) {
-      console.log('[useEstimateSession] Updating server data');
-      const newServerData = new Map(
-        serverLines.map(line => [line.id, line])
-      );
-      
-      // Clean up stale pending changes (for lines that no longer exist)
-      const validLineIds = new Set(serverLines.map(line => line.id));
-      const stalePendingChanges = Array.from(pendingChanges.keys()).filter(
-        lineId => !validLineIds.has(lineId)
-      );
-      
-      if (stalePendingChanges.length > 0) {
-        console.log('[useEstimateSession] Cleaning up stale pending changes for lines:', stalePendingChanges);
-        const cleanedPendingChanges = new Map(pendingChanges);
-        stalePendingChanges.forEach(lineId => cleanedPendingChanges.delete(lineId));
-        
-        useEstimateSessionStore.setState({ 
-          serverData: newServerData,
-          pendingChanges: cleanedPendingChanges
-        });
-      } else {
-        // Only update if there are actual changes
-        const hasChanges = serverLines.some(line => {
-          const existing = serverData.get(line.id);
-          return !existing || JSON.stringify(existing) !== JSON.stringify(line);
-        });
-        
-        if (hasChanges) {
-          useEstimateSessionStore.setState({ serverData: newServerData });
-        }
-      }
-    }
-  }, [serverLines, estimateId, currentEstimateId, pendingChanges]);
-
-  // Get the bulk update mutation
-  const bulkUpdateMutation = api.estimate.bulkUpdateLines.useMutation();
-
-  // Memoized display data
+  // Memoize display lines to prevent unnecessary re-renders
+  // Only recreate when the underlying store data actually changes
   const displayLines = useMemo(() => {
-    if (currentEstimateId !== estimateId) return serverLines;
-    return getDisplayData();
-  }, [currentEstimateId, estimateId, serverLines, pendingChanges, serverData]);
+    return getDisplayLines();
+  }, [storeDisplayLines, currentEstimateId, lastActivityTime]);
+  
+  // Compute hasUnsavedChanges outside of memo dependency to prevent function call in deps
+  const hasChanges = hasUnsavedChanges();
 
-  // Update field with optimistic update
+  // Get server lines from DAL or fallback to provided ones
+  const dalServerLines = linesQuery.data || serverLines || [];
+
+  // Initialize DAL prefetching when session starts
+  useEffect(() => {
+    if (claimId && estimateId) {
+      console.log('[useEstimateSession] Initializing DAL prefetching for estimate session');
+      
+      // Mark session as active for enhanced caching
+      markSessionActive(estimateId);
+      
+      // Prefetch data for estimate tab if not already fresh
+      prefetchForEstimateTab(claimId, { priority: true });
+    }
+    
+    return () => {
+      // Clean up session when hook unmounts
+      if (estimateId) {
+        markSessionInactive(estimateId);
+      }
+    };
+  }, [claimId, estimateId, markSessionActive, markSessionInactive, prefetchForEstimateTab]); // Fixed dependencies
+
+  // Initialize session store when DAL data becomes available (with navigation persistence and race condition handling)
+  useEffect(() => {
+    const hasServerData = dalServerLines.length > 0;
+    const hasNoSession = currentEstimateId !== estimateId;
+    const hasEmptySession = currentEstimateId === estimateId && displayLines.length === 0;
+    const isLoading = linesQuery.isLoading || estimateQuery.isLoading;
+
+    // Wait for cache to finish loading before initializing
+    if (hasServerData && !isLoading && (hasNoSession || hasEmptySession)) {
+      console.log('[useEstimateSession] Cache ready, initializing session with DAL data for estimate:', estimateId);
+      initializeLines(estimateId, dalServerLines);
+      // Create initial backup
+      createBackup();
+    } else if (hasServerData && currentEstimateId === estimateId && displayLines.length > 0) {
+      console.log('[useEstimateSession] Session already active for estimate, preserving state:', estimateId);
+      // Merge any new server data that might have been updated while session was active
+      const existingIds = new Set(displayLines.map(line => line.id));
+      const newServerLines = dalServerLines.filter(line => !existingIds.has(line.id));
+      if (newServerLines.length > 0) {
+        console.log('[useEstimateSession] Merging new server lines into existing session:', newServerLines.length);
+        const mergedLines = [...displayLines, ...newServerLines];
+        initializeLines(estimateId, mergedLines);
+        // Update backup with merged data
+        createBackup();
+      }
+    } else if (!isLoading && hasServerData) {
+      console.log('[useEstimateSession] Cache ready but waiting for proper conditions to initialize session');
+    }
+  }, [estimateId, dalServerLines.length, currentEstimateId, displayLines.length, linesQuery.isLoading, estimateQuery.isLoading, initializeLines, createBackup]); // Fixed dependencies to prevent infinite loops
+
+  // Update field with immediate optimistic update
   const updateField = useCallback((lineId: string, field: keyof EstimateLine, value: any) => {
     if (currentEstimateId !== estimateId) {
       console.warn('[useEstimateSession] Cannot update field - session mismatch');
@@ -164,124 +225,103 @@ export function useEstimateSession({
     }
     
     console.log(`[useEstimateSession] Updating ${String(field)} for line ${lineId}:`, value);
-    storeUpdateField(lineId, field, value);
-  }, [currentEstimateId, estimateId, storeUpdateField]);
+    
+    // Create partial update object
+    const updates = { [field]: value } as Partial<EstimateLine>;
+    updateLine(lineId, updates);
+    
+    // Create backup after changes
+    setTimeout(() => {
+      createBackup();
+    }, 100); // Small delay to allow state updates
+  }, [currentEstimateId, estimateId, updateLine, getDisplayLines, createBackup, hasUnsavedChanges]);
 
-  // Sync changes to server
+  // Simplified: Direct DAL sync with minimal wrapper
   const syncNow = useCallback(async () => {
     if (!hasUnsavedChanges()) {
       console.log('[useEstimateSession] No changes to sync');
       return;
     }
 
-    try {
-      // Create the sync function that uses tRPC bulk update
-      const syncFn = async (updates: Array<{id: string; estimate_id: string; [key: string]: any}>) => {
-        console.log('[useEstimateSession] Calling tRPC bulkUpdateLines with', updates.length, 'updates');
-        
-        const result = await bulkUpdateMutation.mutateAsync({
-          estimate_id: estimateId,
-          updates
-        });
-        
-        return {
-          success: result.success,
-          errors: result.errors
-        };
-      };
-
-      console.log('[useEstimateSession] About to call syncChanges');
-      await syncChanges(syncFn);
-      console.log('[useEstimateSession] syncChanges completed successfully');
-      onSyncSuccess?.();
-      toast.success('Changes saved successfully');
-    } catch (error) {
-      console.error('[useEstimateSession] Sync error caught:', {
-        error,
-        errorType: typeof error,
-        errorMessage: error?.message,
-        errorName: error?.constructor?.name
-      });
-      onSyncError?.(error as Error);
-      toast.error('Failed to save changes', {
-        action: {
-          label: 'Retry',
-          onClick: () => syncNow()
-        }
-      });
+    console.log('[useEstimateSession] Triggering DAL background sync');
+    await forceSyncNow();
+    
+    // Clear backup after successful sync
+    if (!hasUnsavedChanges()) {
+      clearBackup();
     }
-  }, [syncChanges, onSyncSuccess, onSyncError, hasUnsavedChanges, estimateId, bulkUpdateMutation]);
+    
+    onSyncSuccess?.();
+  }, [hasUnsavedChanges, forceSyncNow, clearBackup, onSyncSuccess]);
 
-  // Auto-sync interval
-  useEffect(() => {
-    if (autoSyncInterval > 0 && hasUnsavedChanges()) {
-      const interval = setInterval(async () => {
-        if (syncStatus === 'idle' && hasUnsavedChanges()) {
-          console.log('[useEstimateSession] Auto-syncing changes');
-          await syncNow();
-        }
-      }, autoSyncInterval);
-
-      return () => clearInterval(interval);
-    }
-  }, [autoSyncInterval, hasUnsavedChanges(), syncStatus, syncNow]);
-
-  // Discard all pending changes
-  const discardChanges = useCallback(() => {
-    if (hasUnsavedChanges()) {
-      if (confirm('Are you sure you want to discard all unsaved changes?')) {
-        clearPendingChanges();
-        toast.info('Changes discarded');
-      }
-    }
-  }, [clearPendingChanges, hasUnsavedChanges]);
-
-  // Resolve conflict
-  const resolveConflict = useCallback((lineId: string, field: string, useLocal: boolean) => {
-    storeResolveConflict(lineId, field, useLocal);
-    toast.success(`Conflict resolved - using ${useLocal ? 'local' : 'server'} version`);
-  }, [storeResolveConflict]);
-
-  // Check if a field is modified
-  const isFieldModified = useCallback((lineId: string, field: keyof EstimateLine): boolean => {
-    const changes = pendingChanges.get(lineId);
-    return changes ? field in changes : false;
+  // Status helpers
+  const isLineModified = useCallback((lineId: string): boolean => {
+    return pendingChanges.has(lineId);
   }, [pendingChanges]);
 
-  // Get original server value for a field
-  const getOriginalValue = useCallback((lineId: string, field: keyof EstimateLine): any => {
-    const serverLine = serverData.get(lineId);
-    return serverLine ? serverLine[field] : undefined;
-  }, [serverData]);
-
-  // Calculate detailed status information
   const pendingChangesCount = pendingChanges.size;
-  const conflictCount = syncStatus === 'conflict' ? 1 : 0; // Simplified conflict counting
-  const modifiedLinesCount = pendingChanges.size;
 
-  return {
+  // Simplified: Direct DAL refresh
+  const refreshFromServer = useCallback(async () => {
+    console.log('[useEstimateSession] Refreshing data from server via DAL');
+    await Promise.all([estimateQuery.refetch(), linesQuery.refetch()]);
+  }, [estimateQuery.refetch, linesQuery.refetch]);
+
+  // Memoize the return object to prevent recreating it on every render
+  const returnValue = useMemo(() => ({
+    // Data from DAL
+    estimate: estimateQuery.data,
     displayLines,
-    hasUnsavedChanges: hasUnsavedChanges(),
+    hasUnsavedChanges: hasChanges, // Use computed value instead of function call
     syncStatus,
+    lastActivityTime,
+    
+    // Loading states from DAL
+    isLoading: estimateQuery.isLoading,
+    isLinesLoading: linesQuery.isLoading,
+    
+    // Actions
     updateField,
+    addOptimisticLine,
+    replaceOptimisticLine,
+    removeLine,
     syncNow,
-    discardChanges,
-    resolveConflict,
-    isFieldModified,
-    getOriginalValue,
+    trackActivity,
+    
+    // Status helpers
+    isLineModified,
     pendingChangesCount,
-    conflictCount,
-    modifiedLinesCount
-  };
+    
+    // DAL integration
+    refreshFromServer
+  }), [
+    estimateQuery.data,
+    displayLines, // Now properly memoized, will only change when data actually changes
+    hasChanges, // Use computed boolean instead of function call
+    syncStatus,
+    lastActivityTime,
+    estimateQuery.isLoading,
+    linesQuery.isLoading,
+    updateField,
+    addOptimisticLine,
+    replaceOptimisticLine,
+    removeLine,
+    syncNow,
+    trackActivity,
+    isLineModified,
+    pendingChangesCount,
+    refreshFromServer
+  ]);
+  
+  return returnValue;
 }
 
-// Utility hook for sync status
+// Simplified sync status utility
 export function useEstimateSyncStatus(estimateId: string) {
   const { currentEstimateId, syncStatus, hasUnsavedChanges } = useEstimateSessionStore();
+  const { isOnline } = useEstimateBackgroundSync();
   
-  if (currentEstimateId !== estimateId) {
-    return { syncStatus: 'idle' as const, hasUnsavedChanges: false };
-  }
-  
-  return { syncStatus, hasUnsavedChanges: hasUnsavedChanges() };
+  return currentEstimateId === estimateId 
+    ? { syncStatus, hasUnsavedChanges: hasUnsavedChanges(), isOnline }
+    : { syncStatus: 'idle' as const, hasUnsavedChanges: false, isOnline: true };
 }

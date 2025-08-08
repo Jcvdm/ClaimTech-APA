@@ -85,13 +85,6 @@ export function EstimateLineHeader({ estimate }: EstimateLineHeaderProps) {
             )}
           </div>
 
-          {/* Estimate totals summary */}
-          <div className="text-right">
-            <div className="text-sm text-gray-600">Total Estimate</div>
-            <div className="text-lg font-semibold text-gray-900">
-              {(estimate.total_amount || 0).toFixed(2)}
-            </div>
-          </div>
         </div>
       </div>
 
@@ -107,12 +100,6 @@ export function EstimateLineHeader({ estimate }: EstimateLineHeaderProps) {
               <span>Modified: {new Date(estimate.updated_at).toLocaleDateString()}</span>
             </>
           )}
-        </div>
-        
-        <div className="flex items-center space-x-4">
-          <span>Parts: {(estimate.subtotal_parts || 0).toFixed(2)}</span>
-          <span>Labor: {(estimate.subtotal_labor || 0).toFixed(2)}</span>
-          <span>Paint: {(estimate.subtotal_paint_materials || 0).toFixed(2)}</span>
         </div>
       </div>
     </div>
