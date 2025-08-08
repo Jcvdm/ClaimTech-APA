@@ -29,7 +29,9 @@
       "Bash(node:*)",
       "Bash(timeout 15s npm run dev)",
       "Bash(git merge:*)",
-      "mcp__supabase__get_project_url"
+      "mcp__supabase__get_project_url",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ],
     "deny": []
   },

@@ -1,29 +1,33 @@
-# Database Schema Inventory - Task 1 Verification
+# Database Schema Inventory - Task 1 Verification (Live DB)
 **Date**: 2025-08-08
 **Status**: ✅ Complete
 
 ## Executive Summary
-Comprehensive database schema inventory completed through analysis of migration files and TypeScript type definitions. Identified 10 core tables, 6 database enums, and multiple type alignment opportunities.
+Live schema introspection of the CPA Supabase database confirms core entities, relationships, and three authoritative DB enums. This replaces earlier migration-only assumptions and should be used for type alignment and API contracts.
 
-## 1. Core Tables Documented
+## 1. Core Tables (public schema, live)
 
-### Primary Tables (10)
-- ✅ **claims** - 23 columns, 4 indexes, 2 foreign keys
-- ✅ **estimates** - 27 columns, 2 indexes, 1 foreign key
-- ✅ **estimate_lines** - 21 columns, 5 indexes, 2 foreign keys
-- ✅ **vehicle_inspections** - 80+ columns, 2 indexes, 2 foreign keys
-- ✅ **claim_logs** - 7 columns, 3 indexes, 1 foreign key
-- ✅ **vehicles** - 11 columns, 3 indexes, optional client reference
-- ✅ **clients** - 6 columns, 2 indexes, unique code constraint
-- ✅ **appointments** - 11 columns, 2 indexes, 1 foreign key
-- ✅ **claim_attachments** - 7 columns, 1 index, 1 foreign key
-- ❓ **costings** - Not found in current migrations (may be planned)
+- claims
+- estimates
+- estimate_lines
+- damages
+- attachments (links to claims/damages/additional_lines)
+- additional_lines (links to estimates)
+- appointments
+- vehicle_inspections
+- claim_logs
+- clients, client_contacts, client_approved_repairers
+- vehicles, vehicle_accessories
+- repairers, provinces
+- profiles
 
-### Key Relationships
+### Key Relationships (live)
 ```
 clients ← claims → vehicles
     ↓
     estimates → estimate_lines
+    ↓
+    damages → attachments
     ↓
     vehicle_inspections
     ↓
@@ -31,40 +35,37 @@ clients ← claims → vehicles
     ↓
     claim_logs
     ↓
-    claim_attachments
+    attachments (also references additional_lines)
 ```
 
-## 2. Foreign Key Relationships
+## 2. Foreign Keys (live)
 
-### CASCADE Behaviors (6)
+### CASCADE (selected)
 - estimates.claim_id → claims.id ON DELETE CASCADE
 - estimate_lines.estimate_id → estimates.id ON DELETE CASCADE
 - vehicle_inspections.claim_id → claims.id ON DELETE CASCADE
 - claim_logs.claim_id → claims.id ON DELETE CASCADE
 - appointments.claim_id → claims.id ON DELETE CASCADE
-- claim_attachments.claim_id → claims.id ON DELETE CASCADE
+- attachments.claim_id → claims.id ON DELETE CASCADE
 
-### RESTRICT Behaviors (2)
+### RESTRICT
 - claims.client_id → clients.id ON DELETE RESTRICT
 - claims.vehicle_id → vehicles.id ON DELETE RESTRICT
 
-### SET NULL Behaviors (1)
+### SET NULL
 - claim_logs.user_id → profiles.id ON DELETE SET NULL
+- estimate_lines.damage_id → damages.id ON DELETE SET NULL
+- attachments.damage_id → damages.id ON DELETE SET NULL
+- attachments.additional_line_id → additional_lines.id ON DELETE SET NULL
 
-## 3. Database Enums
+## 3. Database Enums (authoritative, live)
 
-### Confirmed Database Enums (6)
-- **claim_instruction_enum**: 'Agree Only', 'Agree and Authorize', 'Assess Only'
-- **estimate_status_enum**: 'draft', 'submitted', 'approved', 'rejected', 'authorized'
-- **estimate_type_enum**: 'incident', 'pre_incident', 'supplementary'
-- **estimate_source_enum**: 'in_house', 'third_party'
-- **operation_code_enum**: 'N', 'R', 'S', 'P', 'B', 'O', 'SC'
-- **part_type_enum**: 'D', 'ALT', 'U', 'O'
+- claim_instruction_enum: "Agree Only", "Agree and Authorize"
+- claim_status_enum: "New", "Appointed", "In Progress", "Report Sent", "Authorized", "FRC Requested", "FRC Active", "FRC Finalized", "Canceled"
+- type_of_loss_enum: "Accident", "Theft", "Fire", "Flood", "Hail", "Vandalism", "Other"
 
-### Text Fields Acting as Enums (3)
-- **claim.status**: TEXT field with enum-like values
-- **appointment.appointment_status**: TEXT field with enum-like values
-- **claim.type_of_loss**: TEXT field with enum-like values
+Notes:
+- Columns in estimates/estimate_lines for status/type/source/part/operation are TEXT today; no DB enums exist for them yet. Treat as string in code or define narrow unions with caution. Consider adding DB enums later.
 
 ## 4. Type Alignment Issues Found
 
@@ -99,18 +100,16 @@ clients ← claims → vehicles
 3. **execute_bulk_create_estimate_lines()** - Batch line creation
 4. **execute_mixed_bulk_operations()** - Mixed CRUD operations
 
-## 7. Performance Considerations
+## 7. Performance Considerations (live)
 
-### Indexes Present (21 total)
-- Primary key indexes on all tables
-- Foreign key indexes for joins
-- Composite indexes for common query patterns
-- Partial indexes for filtered queries (estimate_lines with is_included)
+### Indexes
+- Primary key and foreign key indexes present across core tables.
+- Composite/partial indexes on estimate_lines for common filters.
 
-### Potential Bottlenecks
-1. **vehicle_inspections**: 80+ columns could impact row size
-2. **Photo storage**: TEXT paths without CDN optimization
-3. **Missing indexes**: No index on claims.created_at for time-based queries
+### Observations
+1. vehicle_inspections has ~25 columns (not 80+). Size acceptable; monitor row bloat as features grow.
+2. Attachments use storage paths; optimize via CDN later.
+3. Consider adding time-based indexes (e.g., claims.created_at) based on query patterns.
 
 ## 8. Data Integrity Constraints
 
